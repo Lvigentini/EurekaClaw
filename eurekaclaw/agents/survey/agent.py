@@ -57,14 +57,26 @@ class SurveyAgent(BaseAgent):
     role = AgentRole.SURVEY
 
     def get_tool_names(self) -> list[str]:
-        return ["arxiv_search", "semantic_scholar_search", "web_search", "citation_manager"]
+        tools = ["arxiv_search", "semantic_scholar_search", "web_search", "citation_manager"]
+        from eurekaclaw.config import settings
+        if settings.gemini_api_key:
+            tools.append("gemini_search")
+        return tools
 
     def _role_system_prompt(self, task: Task) -> str:
-        return """\
+        from eurekaclaw.config import settings
+        gemini_hint = ""
+        if settings.gemini_api_key:
+            gemini_hint = (
+                "\nYou also have gemini_search for broader web + academic search. "
+                "Run it IN PARALLEL with arXiv searches (use both tools in the same turn) "
+                "to maximize coverage — especially for interdisciplinary topics.\n"
+            )
+        return f"""\
 You are the Survey Agent of EurekaClaw. Your job: fast, focused literature search.
 
 Do 2-3 targeted arXiv searches, then synthesize. Be concise.
-
+{gemini_hint}
 Output a JSON object with keys:
 - papers: top 5-8 most relevant papers (title, authors, year, arxiv_id, abstract 1 sentence)
 - open_problems: 3-5 open questions from the literature

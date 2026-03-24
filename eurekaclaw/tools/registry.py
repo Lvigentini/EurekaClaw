@@ -67,6 +67,7 @@ def build_default_registry() -> ToolRegistry:
     from eurekaclaw.tools.arxiv import ArxivSearchTool
     from eurekaclaw.tools.citation import CitationManagerTool
     from eurekaclaw.tools.code_exec import CodeExecutionTool
+    from eurekaclaw.tools.gemini_search import GeminiSearchTool
     from eurekaclaw.tools.lean4 import Lean4Tool
     from eurekaclaw.tools.semantic_scholar import SemanticScholarTool
     from eurekaclaw.tools.web_search import WebSearchTool
@@ -81,6 +82,7 @@ def build_default_registry() -> ToolRegistry:
         Lean4Tool(),
         WolframAlphaTool(),
         CitationManagerTool(),
+        GeminiSearchTool(),
     ]:
         registry.register(tool)
     return registry

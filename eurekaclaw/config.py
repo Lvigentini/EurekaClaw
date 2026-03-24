@@ -51,6 +51,7 @@ class Config(BaseSettings):
     serpapi_key: str = Field(default="", alias="SERPAPI_KEY")
     wolfram_app_id: str = Field(default="", alias="WOLFRAM_APP_ID")
     s2_api_key: str = Field(default="", alias="S2_API_KEY")
+    gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")
 
     # ---- System behaviour --------------------------------------------------
     eurekaclaw_mode: Literal["skills_only", "rl", "madmax"] = Field(
