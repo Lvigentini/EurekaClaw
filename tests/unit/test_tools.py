@@ -35,7 +35,7 @@ async def test_tool_registry_register_and_call():
 async def test_tool_registry_unknown_tool():
     registry = ToolRegistry()
     result = await registry.call("nonexistent", {})
-    assert "Error" in result
+    assert "error" in result
 
 
 def test_tool_to_anthropic_def():
