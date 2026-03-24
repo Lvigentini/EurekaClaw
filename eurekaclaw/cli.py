@@ -263,7 +263,7 @@ def replay_theory_tail(session_id: str, from_stage: str) -> None:
     from eurekaclaw.agents.theory.assembler import Assembler
     from eurekaclaw.agents.theory.consistency_checker import ConsistencyChecker
     from eurekaclaw.agents.theory.theorem_crystallizer import TheoremCrystallizer
-    from eurekaclaw.ccproxy_manager import maybe_start_ccproxy, stop_ccproxy
+    from eurekaclaw.ccproxy_manager import maybe_start_ccproxy
     from eurekaclaw.knowledge_bus.bus import KnowledgeBus
     from eurekaclaw.types.artifacts import TheoryState
 
@@ -271,9 +271,9 @@ def replay_theory_tail(session_id: str, from_stage: str) -> None:
     # ensure ccproxy is running and the Anthropic client env is wired up.
     if settings.anthropic_auth_mode == "oauth":
         try:
-            _ccproxy_proc = maybe_start_ccproxy()
-            if _ccproxy_proc:
-                atexit.register(stop_ccproxy, _ccproxy_proc)
+            _ccproxy_proc, _ccproxy_monitor = maybe_start_ccproxy()
+            if _ccproxy_monitor:
+                atexit.register(_ccproxy_monitor.stop)
         except (RuntimeError, ValueError) as exc:
             console.print(f"[red]ccproxy error: {exc}[/red]")
             sys.exit(1)
@@ -357,15 +357,15 @@ def test_paper_reader(session_id: str, paper_ref: str, mode: str, direction: str
     import atexit
 
     from eurekaclaw.agents.theory.paper_reader import PaperReader
-    from eurekaclaw.ccproxy_manager import maybe_start_ccproxy, stop_ccproxy
+    from eurekaclaw.ccproxy_manager import maybe_start_ccproxy
     from eurekaclaw.knowledge_bus.bus import KnowledgeBus
     from eurekaclaw.types.artifacts import TheoryState
 
     if settings.anthropic_auth_mode == "oauth":
         try:
-            _ccproxy_proc = maybe_start_ccproxy()
-            if _ccproxy_proc:
-                atexit.register(stop_ccproxy, _ccproxy_proc)
+            _ccproxy_proc, _ccproxy_monitor = maybe_start_ccproxy()
+            if _ccproxy_monitor:
+                atexit.register(_ccproxy_monitor.stop)
         except (RuntimeError, ValueError) as exc:
             console.print(f"[red]ccproxy error: {exc}[/red]")
             sys.exit(1)
@@ -723,11 +723,11 @@ def _run_session(
     _ccproxy_proc = None
     if settings.anthropic_auth_mode == "oauth":
         try:
-            from eurekaclaw.ccproxy_manager import maybe_start_ccproxy, stop_ccproxy
-            _ccproxy_proc = maybe_start_ccproxy()
-            if _ccproxy_proc:
+            from eurekaclaw.ccproxy_manager import maybe_start_ccproxy
+            _ccproxy_proc, _ccproxy_monitor = maybe_start_ccproxy()
+            if _ccproxy_monitor:
                 import atexit
-                atexit.register(stop_ccproxy, _ccproxy_proc)
+                atexit.register(_ccproxy_monitor.stop)
         except (RuntimeError, ValueError) as exc:
             console.print(f"[red]ccproxy error: {exc}[/red]")
             sys.exit(1)

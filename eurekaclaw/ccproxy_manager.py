@@ -10,6 +10,7 @@ ccproxy is invoked via subprocess (not Python imports) so the
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import shutil
@@ -205,6 +206,54 @@ def stop_ccproxy(proc: subprocess.Popen | None) -> None:
         pass
 
 
+class CcproxyMonitor:
+    """Background monitor that checks ccproxy health and restarts on crash."""
+
+    def __init__(self, port: int, check_interval: float = 30.0) -> None:
+        self._port = port
+        self._check_interval = check_interval
+        self._proc: subprocess.Popen | None = None
+        self._task: asyncio.Task | None = None
+        self._restart_count = 0
+        self._max_restarts = 5
+
+    def start(self, proc: subprocess.Popen | None) -> None:
+        """Begin monitoring. Call after ensure_ccproxy()."""
+        self._proc = proc
+        try:
+            loop = asyncio.get_running_loop()
+            self._task = loop.create_task(self._monitor_loop())
+        except RuntimeError:
+            pass
+
+    async def _monitor_loop(self) -> None:
+        while True:
+            await asyncio.sleep(self._check_interval)
+            if not is_ccproxy_running(self._port):
+                if self._restart_count >= self._max_restarts:
+                    logger.error(
+                        "ccproxy has crashed %d times — giving up on auto-restart",
+                        self._restart_count,
+                    )
+                    break
+                logger.warning("ccproxy is down — attempting restart (%d/%d)",
+                               self._restart_count + 1, self._max_restarts)
+                try:
+                    self._proc = start_ccproxy(self._port)
+                    setup_ccproxy_env(self._port)
+                    self._restart_count += 1
+                    logger.info("ccproxy restarted successfully on port %d", self._port)
+                except Exception as e:
+                    logger.error("ccproxy restart failed: %s", e)
+                    self._restart_count += 1
+
+    def stop(self) -> None:
+        """Cancel the monitor and stop ccproxy."""
+        if self._task and not self._task.done():
+            self._task.cancel()
+        stop_ccproxy(self._proc)
+
+
 def ensure_ccproxy(port: int) -> subprocess.Popen | None:
     """Ensure ccproxy is running — reuse existing or start new.
 
@@ -307,7 +356,7 @@ def _patch_ccproxy_oauth_header() -> None:
 # =============================================================================
 
 
-def maybe_start_ccproxy() -> subprocess.Popen | None:
+def maybe_start_ccproxy() -> tuple[subprocess.Popen | None, CcproxyMonitor]:
     """Conditionally start ccproxy based on EurekaClaw settings.
 
     Reads ``settings.anthropic_auth_mode`` and ``settings.ccproxy_port``.
@@ -317,7 +366,8 @@ def maybe_start_ccproxy() -> subprocess.Popen | None:
     - Sets ``ANTHROPIC_BASE_URL`` / ``ANTHROPIC_API_KEY`` in the environment
 
     Returns:
-        Popen handle if we started ccproxy, None if not needed or already running.
+        ``(proc, monitor)`` tuple — proc is the Popen handle (or None if reusing),
+        monitor is the CcproxyMonitor instance.
 
     Raises:
         RuntimeError: If ccproxy is unavailable or not authenticated.
@@ -325,7 +375,8 @@ def maybe_start_ccproxy() -> subprocess.Popen | None:
     from eurekaclaw.config import settings
 
     if settings.anthropic_auth_mode != "oauth":
-        return None
+        monitor = CcproxyMonitor(0)
+        return None, monitor
 
     if not is_ccproxy_available():
         raise RuntimeError(
@@ -353,4 +404,7 @@ def maybe_start_ccproxy() -> subprocess.Popen | None:
         logger.info("Started ccproxy on port %d", port)
     else:
         logger.info("Reusing existing ccproxy on port %d", port)
-    return proc
+
+    monitor = CcproxyMonitor(port)
+    monitor.start(proc)
+    return proc, monitor
