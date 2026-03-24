@@ -53,6 +53,9 @@ class Config(BaseSettings):
     s2_api_key: str = Field(default="", alias="S2_API_KEY")
     gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")
 
+    # ---- Ensemble ---------------------------------------------------------
+    ensemble_models: str = Field(default="", alias="ENSEMBLE_MODELS")
+
     # ---- System behaviour --------------------------------------------------
     eurekaclaw_mode: Literal["skills_only", "rl", "madmax"] = Field(
         default="skills_only", alias="EUREKACLAW_MODE"

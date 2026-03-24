@@ -12,6 +12,7 @@ _BACKEND_ALIASES: dict[str, tuple[str, str]] = {
     "openrouter": ("openai_compat", "https://openrouter.ai/api/v1"),
     "local": ("openai_compat", "http://localhost:8000/v1"),
     "minimax": ("openai_compat", "https://api.minimaxi.chat/v1"),
+    "google": ("openai_compat", "https://generativelanguage.googleapis.com/v1beta/openai/"),
 }
 
 
