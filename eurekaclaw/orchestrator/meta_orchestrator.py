@@ -90,6 +90,20 @@ class MetaOrchestrator:
             client=self.client,
         )
 
+        # Ensemble (opt-in via ENSEMBLE_MODELS env var)
+        from eurekaclaw.ensemble.model_pool import ModelPool
+        from eurekaclaw.ensemble.config import EnsembleConfig
+        from eurekaclaw.ensemble.orchestrator import EnsembleOrchestrator
+
+        self.model_pool = ModelPool.create_from_config()
+        self.ensemble_config = EnsembleConfig.from_env()
+        self.ensemble = EnsembleOrchestrator(
+            model_pool=self.model_pool,
+            config=self.ensemble_config,
+            bus=self.bus,
+            gate_mode=settings.gate_mode,
+        )
+
     async def run(self, input_spec: InputSpec) -> ResearchOutput:
         """Run the full research pipeline from input to output artifacts."""
         from eurekaclaw.llm.base import reset_global_tokens
@@ -175,7 +189,11 @@ class MetaOrchestrator:
 
             with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
                 prog_task = progress.add_task(f"{task.name}...", total=None)
-                result = await agent.execute(task)
+                if self.ensemble.is_ensemble_stage(task.name):
+                    agent_factory = lambda client: self.router.create_agent(task, client)
+                    result = await self.ensemble.execute_stage(task, agent_factory)
+                else:
+                    result = await agent.execute(task)
                 progress.update(prog_task, completed=True)
 
             if result.failed:
