@@ -141,6 +141,12 @@ def test_timeout():
 
 # ── 2. Server API integration tests ──────────────────────────────────────────
 
+import pytest
+
+@pytest.mark.skipif(
+    "--with-server" not in sys.argv,
+    reason="Requires running server: eurekaclaw ui --port 8099",
+)
 def test_server(port=8099):
     import json, urllib.request, urllib.error
 
