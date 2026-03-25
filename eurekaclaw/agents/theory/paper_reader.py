@@ -392,51 +392,76 @@ class PaperReader:
             logger.warning("PaperReader: extraction failed for '%s': %s", title, e)
             return []
 
-    async def _extract_from_paper_pdf(
-        self,
-        paper_id: str,
-        title: str,
-        arxiv_id: str,
-        direction: str,
-    ) -> list[KnownResult]:
-        """Fetch the full paper PDF from arXiv, parse it with Docling, and run
-        chunked full-paper extraction over the resulting Markdown.
+    def _fetch_pdf_text(self, arxiv_id: str, title: str) -> str | None:
+        """Fetch and extract text from an arXiv PDF using the configured backend.
 
-        Unlike the old theorem-section heuristic, this reads the full converted
-        paper in chunks so common section titles like "Analysis", "Upper Bounds",
-        or prose-style theorem statements are still visible to the LLM.
-
-        Pipeline:
-          1. Build the arXiv PDF URL from *arxiv_id*.
-          2. Pass the URL directly to Docling — it handles the HTTP fetch,
-             PDF layout analysis, and exports clean Markdown.
-          3. Split the full markdown into manageable chunks.
-          4. Run the existing extraction prompt over each chunk.
-          5. Merge and deduplicate extracted results.
-
-        Falls back gracefully if docling is not installed or the fetch fails.
+        Returns the full extracted text as a string, or None on failure.
         """
+        pdf_url = f"https://arxiv.org/pdf/{arxiv_id}"
+        backend = settings.paper_reader_pdf_backend
+
+        if backend == "pdfplumber":
+            return self._fetch_pdf_pdfplumber(pdf_url, title, arxiv_id)
+        elif backend == "docling":
+            return self._fetch_pdf_docling(pdf_url, title, arxiv_id)
+        else:
+            logger.warning("PaperReader: unknown PDF backend '%s'", backend)
+            return None
+
+    def _fetch_pdf_pdfplumber(self, pdf_url: str, title: str, arxiv_id: str) -> str | None:
+        try:
+            import pdfplumber
+        except ImportError:
+            logger.warning(
+                "PaperReader: 'pdfplumber' not installed — cannot do PDF extraction. "
+                "Install with: pip install 'eurekaclaw[pdf]'"
+            )
+            return None
+
+        import tempfile
+        import requests
+
+        logger.info("PaperReader: fetching PDF via pdfplumber — %s", pdf_url)
+        try:
+            resp = requests.get(pdf_url, timeout=60)
+            resp.raise_for_status()
+        except Exception as e:
+            logger.warning(
+                "PaperReader: PDF download failed for '%s' (%s): %s",
+                title, arxiv_id, e,
+            )
+            return None
+
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".pdf") as tmp:
+                tmp.write(resp.content)
+                tmp.flush()
+                pages_text: list[str] = []
+                with pdfplumber.open(tmp.name) as pdf:
+                    for page in pdf.pages:
+                        text = page.extract_text()
+                        if text:
+                            pages_text.append(text)
+            return "\n\n".join(pages_text)
+        except Exception as e:
+            logger.warning(
+                "PaperReader: pdfplumber extraction failed for '%s' (%s): %s",
+                title, arxiv_id, e,
+            )
+            return None
+
+    def _fetch_pdf_docling(self, pdf_url: str, title: str, arxiv_id: str) -> str | None:
         try:
             from docling.document_converter import DocumentConverter
         except ImportError:
             logger.warning(
                 "PaperReader: 'docling' not installed — cannot do PDF extraction. "
-                "Install with: pip install 'eurekaclaw[pdf]'"
+                "Install with: pip install 'eurekaclaw[pdf-docling]'"
             )
-            return []
+            return None
 
-        if not arxiv_id:
-            logger.debug(
-                "PaperReader: no arxiv_id for '%s', skipping PDF extraction", title
-            )
-            return []
-
-        pdf_url = f"https://arxiv.org/pdf/{arxiv_id}"
         logger.info("PaperReader: fetching PDF via Docling — %s", pdf_url)
         try:
-            # DocumentConverter.convert() accepts a URL string directly;
-            # Docling downloads the PDF, runs its layout pipeline, and returns
-            # a structured DoclingDocument.
             converter = DocumentConverter()
             result = converter.convert(pdf_url)
             markdown = result.document.export_to_markdown()
@@ -445,11 +470,10 @@ class PaperReader:
                 "PaperReader: Docling conversion failed for '%s' (%s): %s",
                 title, arxiv_id, e,
             )
-            return []
+            return None
         finally:
             if "converter" in locals():
                 try:
-                    # aggressively clear internals
                     if hasattr(converter, "initialized_pipelines"):
                         for k in list(converter.initialized_pipelines.keys()):
                             converter.initialized_pipelines[k] = None
@@ -471,7 +495,34 @@ class PaperReader:
             except ImportError:
                 pass
 
-        chunks = _chunk_markdown(markdown)
+        return markdown
+
+    async def _extract_from_paper_pdf(
+        self,
+        paper_id: str,
+        title: str,
+        arxiv_id: str,
+        direction: str,
+    ) -> list[KnownResult]:
+        """Fetch the full paper PDF from arXiv, extract text, and run
+        chunked full-paper extraction over the result.
+
+        The PDF backend is controlled by PAPER_READER_PDF_BACKEND
+        (default: "pdfplumber", alternative: "docling").
+
+        Falls back gracefully if the required package is not installed.
+        """
+        if not arxiv_id:
+            logger.debug(
+                "PaperReader: no arxiv_id for '%s', skipping PDF extraction", title
+            )
+            return []
+
+        text = self._fetch_pdf_text(arxiv_id, title)
+        if not text:
+            return []
+
+        chunks = _chunk_markdown(text)
         if not chunks:
             logger.warning(
                 "PaperReader: Docling produced no usable markdown chunks for '%s' (arxiv_id=%s, markdown_chars=%d)",

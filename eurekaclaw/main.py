@@ -94,16 +94,30 @@ def run_research(conjecture: str, domain: str = "") -> ResearchOutput:
     return asyncio.run(session.run_detailed(conjecture, domain))
 
 
-def save_artifacts(result: ResearchOutput, out_dir: str | Path) -> Path:
+def save_artifacts(
+    result: ResearchOutput,
+    out_dir: str | Path,
+    artifact_name: str = "",
+) -> Path:
     """Write research artifacts to disk and compile a PDF if applicable.
 
     Shared by the CLI and the UI server so both produce identical output
     layouts without circular imports.
 
+    Args:
+        artifact_name: Optional base name for user-facing output files
+            (e.g. ``"autopoiesis-vs-llm"`` → ``autopoiesis-vs-llm.bib``,
+            ``autopoiesis-vs-llm.md``).  When empty, falls back to
+            ``"references"`` / ``"paper"``.
+
     Returns the resolved output directory path.
     """
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
+
+    bib_name = f"{artifact_name}.bib" if artifact_name else "references.bib"
+    paper_md_name = f"{artifact_name}.md" if artifact_name else "paper.md"
+    paper_tex_name = f"{artifact_name}.tex" if artifact_name else "paper.tex"
 
     # Write references.bib for user reference (not used for compilation —
     # the paper uses an inline \begin{thebibliography} block instead).
@@ -114,19 +128,19 @@ def save_artifacts(result: ResearchOutput, out_dir: str | Path) -> Path:
         if not bibtex_str:
             bibtex_str = _generate_bibtex(bib_data.get("papers", []))
         if bibtex_str:
-            (out / "references.bib").write_text(bibtex_str, encoding="utf-8")
-            logger.info("BibTeX saved to %s/references.bib (reference only)", out)
+            (out / bib_name).write_text(bibtex_str, encoding="utf-8")
+            logger.info("BibTeX saved to %s/%s (reference only)", out, bib_name)
 
     if result.latex_paper:
         if settings.output_format == "markdown":
-            (out / "paper.md").write_text(result.latex_paper, encoding="utf-8")
-            logger.info("Markdown paper saved to %s/paper.md", out)
+            (out / paper_md_name).write_text(result.latex_paper, encoding="utf-8")
+            logger.info("Markdown paper saved to %s/%s", out, paper_md_name)
         else:
             # Copy eureka.cls, logo-claw.png, smile.sty, and fonts/ so pdflatex can find them
             _copy_template_assets(out)
-            tex_path = out / "paper.tex"
+            tex_path = out / paper_tex_name
             tex_path.write_text(result.latex_paper, encoding="utf-8")
-            logger.info("LaTeX paper saved to %s/paper.tex", out)
+            logger.info("LaTeX paper saved to %s/%s", out, paper_tex_name)
             # Insert stubs for any \ref{sec:*} labels the LLM referenced but never wrote
             _stub_missing_sections(tex_path)
             # Fix any cite keys that don't have a matching \bibitem in the tex file

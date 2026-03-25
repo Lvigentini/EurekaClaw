@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "eurekaclaw"
-version = "0.1.0"
+version = "0.1.1"
 description = "Multi-agent system for theoretical research — proof-heavy, formalism-rich, math-dense domains"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -39,8 +39,9 @@ docker = ["docker>=7.0"]
 openai = ["openai>=1.30"]
 # Claude Pro/Max via Claude Code OAuth tokens
 oauth = ["ccproxy-api>=0.2.4"]
-# Full-PDF extraction via Docling (arXiv PDF → theorem/lemma sections)
-pdf = ["docling>=2.0"]
+# Full-PDF extraction — pdfplumber (lightweight, default) or Docling (ML-powered)
+pdf = ["pdfplumber>=0.10"]
+pdf-docling = ["docling>=2.0"]
 # Development & testing
 dev = [
     "pytest>=8.0",
@@ -50,7 +51,7 @@ dev = [
 ]
 # Install everything at once (except system-level Lean4/pdflatex)
 all = [
-    "eurekaclaw[embeddings,docker,openai,pdf]",
+    "eurekaclaw[embeddings,docker,openai,pdf,pdf-docling]",
 ]
 
 [project.scripts]

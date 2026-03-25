@@ -81,6 +81,9 @@ class Config(BaseSettings):
         default="auto", alias="EXPERIMENT_MODE"
     )
     paper_reader_use_pdf: bool = Field(default=True, alias="PAPER_READER_USE_PDF")
+    paper_reader_pdf_backend: Literal["pdfplumber", "docling"] = Field(
+        default="pdfplumber", alias="PAPER_READER_PDF_BACKEND"
+    )
     paper_reader_abstract_papers: int = Field(default=10, alias="PAPER_READER_ABSTRACT_PAPERS")
     paper_reader_pdf_papers: int = Field(default=3, alias="PAPER_READER_PDF_PAPERS")
 

@@ -712,6 +712,45 @@ def _show_latex_errors(log_path: Path) -> None:
         console.print(f"[yellow]  Could not read log file: {exc}[/yellow]")
 
 
+def _slugify(text: str, max_len: int = 60) -> str:
+    """Convert free-form text to a filesystem-safe kebab-case slug."""
+    import re
+    slug = text.lower().strip()
+    slug = re.sub(r"[^a-z0-9\s-]", "", slug)
+    slug = re.sub(r"[\s_]+", "-", slug)
+    slug = re.sub(r"-{2,}", "-", slug).strip("-")
+    return slug[:max_len].rstrip("-")
+
+
+def _prompt_artifact_name(query: str, domain: str) -> str:
+    """Prompt the user for an output file base name.
+
+    Suggests a slug derived from the query/domain.  The user can accept
+    it (Enter), type a custom name, or leave blank for generic defaults.
+    """
+    from rich.prompt import Prompt
+
+    source = query or domain or ""
+    # Take first ~8 meaningful words for the suggestion
+    words = source.split()[:8]
+    default = _slugify(" ".join(words)) if words else ""
+
+    try:
+        hint = f" [dim](default: [cyan]{default}[/cyan])[/dim]" if default else ""
+        name = Prompt.ask(
+            f"\n[bold]Output file base name[/bold]{hint}\n"
+            "[dim]Enter a name, press Enter for default, or type 'skip' for generic names[/dim]",
+            default=default,
+        )
+    except (KeyboardInterrupt, EOFError):
+        return default
+
+    name = name.strip()
+    if name.lower() == "skip" or not name:
+        return ""
+    return _slugify(name)
+
+
 def _run_session(
     mode: str,
     query: str,
@@ -785,7 +824,8 @@ def _run_session(
         )
         return
 
-    out = save_artifacts(result, output_dir or "./results")
+    artifact_name = _prompt_artifact_name(query, domain)
+    out = save_artifacts(result, output_dir or "./results", artifact_name=artifact_name)
     console.print(f"[green]Artifacts saved to {out}[/green]")
 
 
