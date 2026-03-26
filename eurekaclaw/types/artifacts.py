@@ -25,6 +25,12 @@ class Paper(BaseModel):
     citation_count: int = 0
     url: str = ""
     relevance_score: float = 0.0
+    # Content tracking (Phase 1)
+    content_tier: Literal["full_text", "abstract", "metadata", "missing"] = "metadata"
+    local_pdf_path: str | None = None
+    full_text: str | None = None
+    user_notes: str = ""
+    source: str = "search"  # "search", "zotero", "user_provided", "bib_import", "draft"
 
 
 class Bibliography(BaseModel):
