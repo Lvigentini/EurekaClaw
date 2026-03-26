@@ -4,6 +4,59 @@ Summary of all updates from `UPDATES.md`.
 
 ---
 
+## v0.3.0 — 2026-03-27 (Non-Linear Pipeline Redesign)
+
+### Phase 0: Version Store
+- Git-like version history for research sessions
+- `BusSnapshot` serializes/deserializes full KnowledgeBus state
+- `VersionStore` with commit, checkout, diff, log, head
+- Auto-commit on every pipeline stage completion
+- CLI commands: `history`, `diff`, `checkout`
+
+### Phase 1: Content Tier Tracking
+- Paper model extended with `content_tier` (full_text/abstract/metadata/missing), `full_text`, `local_pdf_path`, `user_notes`, `source`
+- `ContentGapAnalyzer` reports content availability after survey
+- Interactive gap-filling prompts user for PDF directory instead of silently degrading
+
+### Phase 2: Bibliography Injection
+- `BibLoader` parses `.bib` files via bibtexparser, matches local PDFs by arXiv ID
+- `from-bib` CLI command: start research from existing bibliography
+- Survey runs in "gap-fill" mode when bibliography is pre-populated
+
+### Phase 3: Zotero Read Integration
+- `ZoteroAdapter` using pyzotero (Web API): import collections, items, notes
+- `from-zotero` CLI command with `ZOTERO_API_KEY`/`ZOTERO_LIBRARY_ID` config
+- Extracts arXiv IDs from Zotero's `extra` field, user notes as context
+
+### Phase 4: Draft Paper Analysis
+- `DraftAnalyzer` extracts structure from LaTeX, Markdown, and PDF drafts
+- Regex-based extraction: title, abstract, citations, claims (theorems/lemmas), sections, TODOs
+- `from-draft` CLI command with free-text instruction
+
+### Phase 5: Non-Linear Pipeline
+- `IdeationPool` model for continuous ideation (injected ideas, emerged insights)
+- `inject paper/idea/draft` CLI commands for mid-session injection
+- Ideation re-entry: unincorporated ideas injected into theory prompts
+- Theory-to-ideation feedback: key lemma failures captured as insights
+
+### Phase 6: Zotero Write-Back
+- `push-to-zotero` CLI command: push discovered papers, session notes, tags
+- Create collections, bulk-push papers, attach child notes
+
+### Other
+- `PAPER_READER_PDF_BACKEND` setting (pdfplumber default, docling optional)
+- Output naming prompt at end of session (custom filenames instead of generic)
+- 177 tests (53 new)
+
+---
+
+## v0.2.0 — 2026-03-26
+
+- Version store foundation (Phase 0 only)
+- 26 new versioning tests
+
+---
+
 ## 2026-03-21
 
 ### 9. `theory_review_gate` Loops Until User Approves

@@ -86,6 +86,18 @@ Configure via environment variables — add `ENSEMBLE_MODELS=claude,gemini` and 
 - **Structured error handling** — tool failures return JSON errors that agents can reason about
 - **Dynamic ensemble recommendations** — system suggests widening or narrowing model participation based on observed results
 
+### 4. Non-Linear Pipeline & Version History
+- **Git-like session versioning** — every state change is tracked, diffable, and reversible (`history`, `diff`, `checkout` commands)
+- **Content tier tracking** — papers are classified as full_text/abstract/metadata/missing; the system prompts you to fill gaps via institutional access instead of silently degrading
+- **Multiple entry points** — start from `.bib` files, draft papers, or Zotero collections, not just cold-start search
+- **Mid-session injection** — pause a session, inject papers/ideas/drafts, and resume with enriched context
+- **Continuous ideation** — ideas from the user, from papers, and from failed proofs accumulate in an IdeationPool that feeds into every stage
+- **Zotero integration** — bidirectional sync: import your curated library, push discoveries back
+
+### 5. Flexible Output
+- **Custom output naming** — the system prompts for a file base name at the end of each session instead of generic `paper.tex`/`references.bib`
+- **pdfplumber PDF backend** — lightweight alternative to Docling for full-text extraction, configurable via `PAPER_READER_PDF_BACKEND`
+
 ---
 
 ## Installation
@@ -140,6 +152,25 @@ eurekaclaw explore "multi-armed bandit theory"
 
 # CLI — start from arXiv papers
 eurekaclaw from-papers 1706.03762 2005.14165 --domain "attention mechanisms"
+
+# CLI — start from your existing bibliography
+eurekaclaw from-bib references.bib --pdfs ./papers/ --domain "ML theory"
+
+# CLI — start from a draft paper
+eurekaclaw from-draft paper.tex "Help me strengthen the theory section"
+
+# CLI — start from your Zotero library
+export ZOTERO_API_KEY=your_key ZOTERO_LIBRARY_ID=your_id
+eurekaclaw from-zotero ABC123 --domain "information theory"
+
+# Mid-session: inject a paper or idea into a paused session
+eurekaclaw inject paper <session-id> 2401.12345
+eurekaclaw inject idea <session-id> "What about spectral methods?"
+
+# Version management: view history, compare, roll back
+eurekaclaw history <session-id>
+eurekaclaw diff <session-id> 1 3
+eurekaclaw checkout <session-id> 2
 ```
 
 > No API key? Use a Claude Pro/Max subscription via [OAuth](https://github.com/EurekaClaw/EurekaClaw/blob/main/docs/configuration.md#llm-backend).
@@ -156,11 +187,14 @@ eurekaclaw from-papers 1706.03762 2005.14165 --domain "attention mechanisms"
 
 ## Input Modes
 
-| Command | Level | When to use |
-|---|---|---|
-| `eurekaclaw prove "<conjecture>"` | 1 | You have a precise mathematical statement to prove |
-| `eurekaclaw from-papers <ids>` | 2 | You want to extend or find gaps in specific papers |
-| `eurekaclaw explore "<domain>"` | 3 | You have a broad research area but no conjecture yet |
+| Command | When to use |
+|---|---|
+| `eurekaclaw prove "<conjecture>"` | You have a precise mathematical statement to prove |
+| `eurekaclaw from-papers <ids>` | You want to extend or find gaps in specific papers |
+| `eurekaclaw explore "<domain>"` | You have a broad research area but no conjecture yet |
+| `eurekaclaw from-bib refs.bib --pdfs ./papers/` | You have a .bib file and local PDFs from your research |
+| `eurekaclaw from-draft paper.tex "Strengthen theory"` | You have a draft paper and want to extend/complete it |
+| `eurekaclaw from-zotero <collection-id>` | You want to start from your Zotero library (institutional access) |
 
 ---
 
