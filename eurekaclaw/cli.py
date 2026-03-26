@@ -736,6 +736,81 @@ def inject_draft(session_id: str, draft_file: str, instruction: str) -> None:
     console.print(f"  Resume with: [bold]eurekaclaw resume {session_id}[/bold]")
 
 
+@main.command("push-to-zotero")
+@click.argument("session_id")
+@click.option("--collection", "-c", default="EurekaClaw Results",
+              help="Zotero collection name to push results into")
+def push_to_zotero(session_id: str, collection: str) -> None:
+    """Push session results (discovered papers, notes) back to Zotero.
+
+    Requires ZOTERO_API_KEY and ZOTERO_LIBRARY_ID environment variables.
+
+    Example: eurekaclaw push-to-zotero abc123 --collection "My Research"
+    """
+    if not settings.zotero_api_key or not settings.zotero_library_id:
+        console.print(
+            "[red]Zotero credentials not configured.[/red]\n"
+            "Set ZOTERO_API_KEY and ZOTERO_LIBRARY_ID environment variables."
+        )
+        sys.exit(1)
+
+    session_dir = settings.runs_dir / session_id
+    if not session_dir.exists():
+        console.print(f"[red]Session not found: {session_dir}[/red]")
+        sys.exit(1)
+
+    try:
+        from eurekaclaw.integrations.zotero.adapter import ZoteroAdapter
+    except ImportError:
+        console.print("[red]pyzotero not installed. Install with: pip install 'eurekaclaw[zotero]'[/red]")
+        sys.exit(1)
+
+    from eurekaclaw.knowledge_bus.bus import KnowledgeBus
+
+    bus = KnowledgeBus.load(session_id, session_dir)
+    adapter = ZoteroAdapter(
+        library_id=settings.zotero_library_id,
+        api_key=settings.zotero_api_key,
+        library_type=settings.zotero_library_type,
+    )
+
+    # Create collection
+    console.print(f"[blue]Creating Zotero collection: {collection}[/blue]")
+    col_key = adapter.create_collection(collection)
+
+    # Push discovered papers (those without a zotero_item_key = new discoveries)
+    bib = bus.get_bibliography()
+    if bib:
+        new_papers = [p for p in bib.papers if not p.zotero_item_key]
+        if new_papers:
+            console.print(f"[blue]Pushing {len(new_papers)} discovered papers...[/blue]")
+            keys = adapter.push_papers(new_papers, col_key)
+            console.print(f"[green]Pushed {len(keys)} papers to Zotero.[/green]")
+        else:
+            console.print("[dim]No new papers to push (all already from Zotero).[/dim]")
+
+    # Push theory notes onto source papers
+    state = bus.get_theory_state()
+    if state and state.assembled_proof and bib:
+        zotero_papers = [p for p in bib.papers if p.zotero_item_key]
+        if zotero_papers:
+            note_html = (
+                f"<h2>EurekaClaw Session {session_id[:8]}</h2>"
+                f"<p><strong>Theorem:</strong> {state.informal_statement[:200]}</p>"
+                f"<p><strong>Status:</strong> {state.status}</p>"
+                f"<p><strong>Proven lemmas:</strong> {len(state.proven_lemmas)}</p>"
+            )
+            # Attach note to the first Zotero paper (primary reference)
+            adapter.push_note(
+                zotero_papers[0].zotero_item_key,
+                note_html,
+                tags=["eurekaclaw", f"session:{session_id[:8]}"],
+            )
+            console.print(f"[green]Pushed session note to '{zotero_papers[0].title[:50]}'[/green]")
+
+    console.print(f"[bold green]Zotero sync complete for session {session_id[:8]}.[/bold green]")
+
+
 @main.command()
 def skills() -> None:
     """List all available skills in the skills bank."""

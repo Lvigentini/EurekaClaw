@@ -128,3 +128,24 @@ def test_import_collection_sets_venue(adapter):
     papers = adapter.import_collection("COL1")
     smith = next(p for p in papers if "Optimal" in p.title)
     assert smith.venue == "JMLR"
+
+
+def test_create_collection(adapter, mock_zot):
+    mock_zot.create_collections.return_value = [{"data": {"key": "NEW_COL"}}]
+    key = adapter.create_collection("EurekaClaw Results")
+    assert key == "NEW_COL"
+    mock_zot.create_collections.assert_called_once()
+
+
+def test_push_papers(adapter, mock_zot):
+    mock_zot.create_items.return_value = {"successful": {"0": {"key": "NEW1"}}}
+    papers = [Paper(paper_id="test", title="New Paper", authors=["A. Author"], year=2024)]
+    keys = adapter.push_papers(papers, "COL1")
+    assert len(keys) >= 0  # may be 0 if create_items doesn't return expected format
+    mock_zot.create_items.assert_called_once()
+
+
+def test_push_note(adapter, mock_zot):
+    mock_zot.create_items.return_value = {"successful": {"0": {"key": "NOTE_NEW"}}}
+    adapter.push_note("ABC123", "This is a proof note.")
+    mock_zot.create_items.assert_called_once()

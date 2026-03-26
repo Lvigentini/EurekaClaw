@@ -140,3 +140,64 @@ class ZoteroAdapter:
             content_tier=content_tier,
             zotero_item_key=key,
         )
+
+    def create_collection(self, name: str, parent: str | None = None) -> str:
+        """Create a Zotero collection and return its key."""
+        payload = [{"name": name}]
+        if parent:
+            payload[0]["parentCollection"] = parent
+        result = self._zot.create_collections(payload)
+        if result and isinstance(result, list) and result[0].get("data", {}).get("key"):
+            return result[0]["data"]["key"]
+        # Fallback: pyzotero sometimes returns different formats
+        return ""
+
+    def push_papers(self, papers: list[Paper], collection_key: str = "") -> list[str]:
+        """Push papers to Zotero library, optionally into a collection."""
+        items = []
+        for paper in papers:
+            item: dict[str, Any] = {
+                "itemType": "journalArticle",
+                "title": paper.title,
+                "creators": [
+                    {"creatorType": "author", "name": a} for a in paper.authors
+                ],
+                "date": str(paper.year) if paper.year else "",
+                "abstractNote": paper.abstract,
+                "url": paper.url,
+            }
+            if paper.venue:
+                item["publicationTitle"] = paper.venue
+            if paper.arxiv_id:
+                item["extra"] = f"arXiv: {paper.arxiv_id}"
+            if collection_key:
+                item["collections"] = [collection_key]
+            items.append(item)
+
+        if not items:
+            return []
+
+        result = self._zot.create_items(items)
+        keys = []
+        successful = result.get("successful", {}) if isinstance(result, dict) else {}
+        for idx_str, data in successful.items():
+            if isinstance(data, dict) and "key" in data:
+                keys.append(data["key"])
+        logger.info("ZoteroAdapter: pushed %d/%d papers", len(keys), len(items))
+        return keys
+
+    def push_note(self, parent_item_key: str, note_html: str, tags: list[str] | None = None) -> str | None:
+        """Create a child note on a Zotero item."""
+        item: dict[str, Any] = {
+            "itemType": "note",
+            "parentItem": parent_item_key,
+            "note": note_html,
+        }
+        if tags:
+            item["tags"] = [{"tag": t} for t in tags]
+        result = self._zot.create_items([item])
+        successful = result.get("successful", {}) if isinstance(result, dict) else {}
+        for idx_str, data in successful.items():
+            if isinstance(data, dict) and "key" in data:
+                return data["key"]
+        return None
