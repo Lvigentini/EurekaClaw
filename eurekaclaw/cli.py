@@ -120,6 +120,74 @@ def from_papers(paper_ids: tuple[str, ...], query: str, domain: str, mode: str, 
     )
 
 
+@main.command("from-bib")
+@click.argument("bib_file", type=click.Path(exists=True))
+@click.option("--pdfs", "-p", default=None, type=click.Path(exists=True),
+              help="Directory containing local PDF files to match")
+@click.option("--domain", "-d", required=True, help="Research domain")
+@click.option("--query", "-q", default="", help="Specific research question")
+@click.option("--mode", default="skills_only", type=click.Choice(["skills_only", "rl", "madmax"]))
+@click.option("--gate", default="none", type=click.Choice(["human", "auto", "none"]))
+@click.option("--output", "-o", default="./results", help="Output directory")
+def from_bib(bib_file: str, pdfs: str | None, domain: str, query: str, mode: str, gate: str, output: str) -> None:
+    """Start research from a .bib file and optional local PDFs.
+
+    Example: eurekaclaw from-bib refs.bib --pdfs ./papers/ --domain "ML theory"
+    """
+    from pathlib import Path
+    from eurekaclaw.analyzers.bib_loader import BibLoader
+
+    # Parse .bib file
+    papers = BibLoader.load_bib(Path(bib_file))
+    if not papers:
+        console.print("[red]No papers found in .bib file.[/red]")
+        sys.exit(1)
+
+    console.print(f"[green]Loaded {len(papers)} papers from {bib_file}[/green]")
+
+    # Match local PDFs if directory provided
+    if pdfs:
+        pdf_dir = Path(pdfs)
+        papers = BibLoader.match_pdfs(papers, pdf_dir)
+        matched = sum(1 for p in papers if p.local_pdf_path)
+        console.print(f"[green]Matched {matched}/{len(papers)} papers to local PDFs[/green]")
+
+        # Extract text from matched PDFs
+        for paper in papers:
+            if paper.local_pdf_path:
+                try:
+                    import pdfplumber
+                    with pdfplumber.open(paper.local_pdf_path) as pdf:
+                        pages = [page.extract_text() or "" for page in pdf.pages]
+                        paper.full_text = "\n\n".join(pages)
+                        paper.content_tier = "full_text"
+                except Exception as e:
+                    console.print(f"[yellow]PDF extraction failed for '{paper.title[:50]}': {e}[/yellow]")
+
+    if not query:
+        n = len(papers)
+        query = (
+            f"You have been provided with {n} papers from the user's bibliography in {domain}. "
+            f"These papers are already loaded — do NOT search for them again. "
+            f"Instead, identify gaps in coverage: what related work is missing? "
+            f"What recent advances are not represented? What foundational work should be added? "
+            f"Search for papers that complement this existing collection."
+        )
+
+    paper_ids = [p.paper_id for p in papers if p.paper_id]
+
+    _run_session(
+        mode="reference",
+        query=query,
+        domain=domain,
+        paper_ids=paper_ids,
+        learn_mode=mode,
+        gate=gate,
+        output_dir=output,
+        _preloaded_papers=papers,
+    )
+
+
 @main.command()
 @click.argument("session_id")
 def pause(session_id: str) -> None:
@@ -891,6 +959,7 @@ def _run_session(
     gate: str = "human",
     skills: list[str] | None = None,
     output_dir: str = "",
+    _preloaded_papers: list | None = None,
 ) -> None:
     """Common session runner."""
     import os
@@ -928,6 +997,12 @@ def _run_session(
     )
 
     session = EurekaSession()
+
+    # Pre-populate bibliography if papers were loaded externally (e.g. from-bib)
+    if _preloaded_papers:
+        from eurekaclaw.types.artifacts import Bibliography
+        bib = Bibliography(session_id=session.session_id, papers=_preloaded_papers)
+        session.bus.put_bibliography(bib)
 
     from eurekaclaw.agents.theory.checkpoint import ProofCheckpoint, ProofPausedException
     _cp = ProofCheckpoint(session.session_id)
