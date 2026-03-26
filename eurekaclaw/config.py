@@ -87,6 +87,14 @@ class Config(BaseSettings):
     paper_reader_abstract_papers: int = Field(default=10, alias="PAPER_READER_ABSTRACT_PAPERS")
     paper_reader_pdf_papers: int = Field(default=3, alias="PAPER_READER_PDF_PAPERS")
 
+    # ---- Zotero integration ------------------------------------------------
+    zotero_enabled: bool = Field(default=False, alias="ZOTERO_ENABLED")
+    zotero_api_key: str = Field(default="", alias="ZOTERO_API_KEY")
+    zotero_library_id: str = Field(default="", alias="ZOTERO_LIBRARY_ID")
+    zotero_library_type: str = Field(default="user", alias="ZOTERO_LIBRARY_TYPE")
+    zotero_local_data_dir: str = Field(default="", alias="ZOTERO_LOCAL_DATA_DIR")
+    zotero_sync_back: bool = Field(default=False, alias="ZOTERO_SYNC_BACK")
+
     # ---- Token limits per call type ----------------------------------------
     max_tokens_agent: int = Field(default=8192, alias="MAX_TOKENS_AGENT")
     max_tokens_prover: int = Field(default=4096, alias="MAX_TOKENS_PROVER")

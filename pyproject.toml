@@ -42,6 +42,8 @@ oauth = ["ccproxy-api>=0.2.4"]
 # Full-PDF extraction — pdfplumber (lightweight, default) or Docling (ML-powered)
 pdf = ["pdfplumber>=0.10"]
 pdf-docling = ["docling>=2.0"]
+# Zotero integration (import/export papers via Zotero Web API)
+zotero = ["pyzotero>=1.5"]
 # Development & testing
 dev = [
     "pytest>=8.0",
@@ -51,7 +53,7 @@ dev = [
 ]
 # Install everything at once (except system-level Lean4/pdflatex)
 all = [
-    "eurekaclaw[embeddings,docker,openai,pdf,pdf-docling]",
+    "eurekaclaw[embeddings,docker,openai,pdf,pdf-docling,zotero]",
 ]
 
 [project.scripts]

@@ -188,6 +188,87 @@ def from_bib(bib_file: str, pdfs: str | None, domain: str, query: str, mode: str
     )
 
 
+@main.command("from-zotero")
+@click.argument("collection_id")
+@click.option("--domain", "-d", required=True, help="Research domain")
+@click.option("--query", "-q", default="", help="Specific research question")
+@click.option("--mode", default="skills_only", type=click.Choice(["skills_only", "rl", "madmax"]))
+@click.option("--gate", default="none", type=click.Choice(["human", "auto", "none"]))
+@click.option("--output", "-o", default="./results", help="Output directory")
+def from_zotero(collection_id: str, domain: str, query: str, mode: str, gate: str, output: str) -> None:
+    """Start research from a Zotero collection.
+
+    Requires ZOTERO_API_KEY and ZOTERO_LIBRARY_ID environment variables.
+
+    Example: eurekaclaw from-zotero ABC123 --domain "ML theory"
+    """
+    if not settings.zotero_api_key or not settings.zotero_library_id:
+        console.print(
+            "[red]Zotero credentials not configured.[/red]\n"
+            "Set ZOTERO_API_KEY and ZOTERO_LIBRARY_ID environment variables.\n"
+            "Get your API key at: https://www.zotero.org/settings/keys"
+        )
+        sys.exit(1)
+
+    try:
+        from eurekaclaw.integrations.zotero.adapter import ZoteroAdapter
+    except ImportError:
+        console.print(
+            "[red]pyzotero not installed.[/red]\n"
+            "Install with: pip install 'eurekaclaw[zotero]'"
+        )
+        sys.exit(1)
+
+    adapter = ZoteroAdapter(
+        library_id=settings.zotero_library_id,
+        api_key=settings.zotero_api_key,
+        library_type=settings.zotero_library_type,
+        local_data_dir=settings.zotero_local_data_dir or None,
+    )
+
+    console.print(f"[blue]Importing from Zotero collection {collection_id}...[/blue]")
+    papers = adapter.import_collection(collection_id)
+    if not papers:
+        console.print("[red]No papers found in Zotero collection.[/red]")
+        sys.exit(1)
+
+    console.print(f"[green]Imported {len(papers)} papers from Zotero[/green]")
+
+    # Extract text from local PDFs if available
+    for paper in papers:
+        if paper.local_pdf_path:
+            try:
+                import pdfplumber
+                with pdfplumber.open(paper.local_pdf_path) as pdf:
+                    pages = [page.extract_text() or "" for page in pdf.pages]
+                    paper.full_text = "\n\n".join(pages)
+                    paper.content_tier = "full_text"
+            except Exception as e:
+                console.print(f"[yellow]PDF extraction failed for '{paper.title[:50]}': {e}[/yellow]")
+
+    if not query:
+        n = len(papers)
+        query = (
+            f"You have been provided with {n} papers from the user's Zotero library in {domain}. "
+            f"These papers are already loaded — do NOT search for them again. "
+            f"Instead, identify gaps: what related work is missing? "
+            f"What recent advances or foundational work should be added?"
+        )
+
+    paper_ids = [p.paper_id for p in papers if p.paper_id]
+
+    _run_session(
+        mode="reference",
+        query=query,
+        domain=domain,
+        paper_ids=paper_ids,
+        learn_mode=mode,
+        gate=gate,
+        output_dir=output,
+        _preloaded_papers=papers,
+    )
+
+
 @main.command()
 @click.argument("session_id")
 def pause(session_id: str) -> None:
