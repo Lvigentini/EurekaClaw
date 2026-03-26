@@ -564,6 +564,178 @@ def checkout(session_id: str, version_number: int) -> None:
     console.print(f"  Resume with: [bold]eurekaclaw resume {session_id}[/bold]")
 
 
+@main.group()
+def inject() -> None:
+    """Inject content into a paused session."""
+    pass
+
+
+@inject.command("paper")
+@click.argument("session_id")
+@click.argument("paper_ref")
+def inject_paper(session_id: str, paper_ref: str) -> None:
+    """Inject a paper into a session's bibliography.
+
+    PAPER_REF can be an arXiv ID (e.g. 2401.12345) or a local PDF path.
+
+    Example: eurekaclaw inject paper abc123 2401.12345
+    """
+    from pathlib import Path
+    from eurekaclaw.knowledge_bus.bus import KnowledgeBus
+    from eurekaclaw.types.artifacts import Paper, Bibliography
+    from eurekaclaw.orchestrator.ideation_pool import IdeationPool
+
+    session_dir = settings.runs_dir / session_id
+    if not session_dir.exists():
+        console.print(f"[red]Session not found: {session_dir}[/red]")
+        sys.exit(1)
+
+    bus = KnowledgeBus.load(session_id, session_dir)
+
+    # Determine if paper_ref is a local file or an arXiv ID
+    ref_path = Path(paper_ref)
+    if ref_path.exists() and ref_path.suffix == ".pdf":
+        # Local PDF
+        try:
+            import pdfplumber
+            with pdfplumber.open(str(ref_path)) as pdf:
+                pages = [page.extract_text() or "" for page in pdf.pages]
+                full_text = "\n\n".join(pages)
+        except Exception as e:
+            console.print(f"[red]PDF extraction failed: {e}[/red]")
+            sys.exit(1)
+
+        paper = Paper(
+            paper_id=ref_path.stem,
+            title=ref_path.stem.replace("-", " ").replace("_", " "),
+            authors=[],
+            source="user_provided",
+            content_tier="full_text",
+            full_text=full_text,
+            local_pdf_path=str(ref_path),
+        )
+        console.print(f"[green]Loaded local PDF: {ref_path.name}[/green]")
+    else:
+        # Assume arXiv ID
+        paper = Paper(
+            paper_id=paper_ref,
+            title=f"Paper {paper_ref}",
+            authors=[],
+            arxiv_id=paper_ref,
+            source="user_provided",
+            content_tier="metadata",
+        )
+        console.print(f"[green]Added paper reference: {paper_ref}[/green]")
+
+    # Add to bibliography
+    bib = bus.get_bibliography() or Bibliography(session_id=session_id)
+    existing_ids = {p.paper_id for p in bib.papers}
+    if paper.paper_id in existing_ids:
+        console.print(f"[yellow]Paper {paper.paper_id} already in bibliography.[/yellow]")
+        return
+    bib.papers.append(paper)
+    bus.put_bibliography(bib)
+
+    # Mark ideation as having new input
+    pool = bus.get_ideation_pool() or IdeationPool()
+    pool.inject_idea(
+        f"New paper added: {paper.title} ({paper.paper_id})",
+        source=f"inject:paper:{paper.paper_id}",
+    )
+    bus.put_ideation_pool(pool)
+
+    # Commit version
+    bus.persist_incremental(completed_stage=None)
+
+    console.print(f"[green]Paper injected into session {session_id[:8]}.[/green]")
+    console.print(f"  Bibliography now has {len(bib.papers)} papers.")
+    console.print(f"  Resume with: [bold]eurekaclaw resume {session_id}[/bold]")
+
+
+@inject.command("idea")
+@click.argument("session_id")
+@click.argument("text")
+def inject_idea(session_id: str, text: str) -> None:
+    """Inject an idea into a session's ideation pool.
+
+    Example: eurekaclaw inject idea abc123 "What if we use spectral methods?"
+    """
+    from eurekaclaw.knowledge_bus.bus import KnowledgeBus
+    from eurekaclaw.orchestrator.ideation_pool import IdeationPool
+
+    session_dir = settings.runs_dir / session_id
+    if not session_dir.exists():
+        console.print(f"[red]Session not found: {session_dir}[/red]")
+        sys.exit(1)
+
+    bus = KnowledgeBus.load(session_id, session_dir)
+
+    pool = bus.get_ideation_pool() or IdeationPool()
+    pool.inject_idea(text, source="user:injection")
+    bus.put_ideation_pool(pool)
+
+    bus.persist_incremental(completed_stage=None)
+
+    console.print(f"[green]Idea injected into session {session_id[:8]}.[/green]")
+    console.print(f"  \"{text[:80]}\"")
+    console.print(f"  Ideation pool now has {len(pool.injected_ideas)} injected idea(s).")
+    console.print(f"  Resume with: [bold]eurekaclaw resume {session_id}[/bold]")
+
+
+@inject.command("draft")
+@click.argument("session_id")
+@click.argument("draft_file", type=click.Path(exists=True))
+@click.argument("instruction", default="")
+def inject_draft(session_id: str, draft_file: str, instruction: str) -> None:
+    """Inject a draft paper into a session.
+
+    Example: eurekaclaw inject draft abc123 paper.tex "Consider these results"
+    """
+    from pathlib import Path
+    from eurekaclaw.knowledge_bus.bus import KnowledgeBus
+    from eurekaclaw.analyzers.draft_analyzer import DraftAnalyzer
+    from eurekaclaw.orchestrator.ideation_pool import IdeationPool
+
+    session_dir = settings.runs_dir / session_id
+    if not session_dir.exists():
+        console.print(f"[red]Session not found: {session_dir}[/red]")
+        sys.exit(1)
+
+    bus = KnowledgeBus.load(session_id, session_dir)
+    analysis = DraftAnalyzer.analyze(Path(draft_file))
+    if not analysis.full_text:
+        console.print("[red]Could not extract text from draft.[/red]")
+        sys.exit(1)
+
+    console.print(f"[green]Draft analyzed: {analysis.title[:60]}[/green]")
+
+    # Update research brief with draft info
+    brief = bus.get_research_brief()
+    if brief:
+        brief.draft_summary = analysis.abstract or analysis.full_text[:500]
+        brief.draft_claims = analysis.claims
+        if instruction:
+            brief.additional_context = (brief.additional_context or "") + f"\n\nDraft instruction: {instruction}"
+        bus.put_research_brief(brief)
+
+    # Inject into ideation pool
+    pool = bus.get_ideation_pool() or IdeationPool()
+    summary = f"Draft injected: '{analysis.title}'"
+    if instruction:
+        summary += f" — {instruction}"
+    pool.inject_idea(summary, source=f"inject:draft:{Path(draft_file).name}")
+    if analysis.claims:
+        for claim in analysis.claims[:5]:
+            pool.add_insight(f"Draft claim: {claim[:150]}")
+    bus.put_ideation_pool(pool)
+
+    bus.persist_incremental(completed_stage=None)
+
+    console.print(f"[green]Draft injected into session {session_id[:8]}.[/green]")
+    console.print(f"  Claims: {len(analysis.claims)}, Citations: {len(analysis.citation_keys)}")
+    console.print(f"  Resume with: [bold]eurekaclaw resume {session_id}[/bold]")
+
+
 @main.command()
 def skills() -> None:
     """List all available skills in the skills bank."""
