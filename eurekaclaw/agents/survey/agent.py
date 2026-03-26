@@ -149,6 +149,7 @@ papers (5-8), open_problems (3-5), key_mathematical_objects, research_frontier, 
                     citation_count=p.get("citation_count", 0),
                     url=p.get("url", ""),
                     relevance_score=p.get("relevance_score", 0.0),
+                    content_tier="abstract" if p.get("abstract", "").strip() else "metadata",
                 )
                 for p in survey_data.get("papers", [])
             ]
