@@ -483,6 +483,70 @@ def history(session_id: str) -> None:
     console.print(table)
 
 
+@main.command()
+def sessions() -> None:
+    """List all research sessions.
+
+    Shows session ID, domain, status, stages completed, and age.
+    """
+    from datetime import datetime, timezone
+    from rich.table import Table
+    from eurekaclaw.storage.db import SessionDB
+
+    db = SessionDB(settings.eurekaclaw_dir / "eurekaclaw.db")
+    all_sessions = db.list_sessions()
+
+    if not all_sessions:
+        console.print("[dim]No sessions found. Run a research command to create one.[/dim]")
+        return
+
+    table = Table(title=f"Research Sessions ({len(all_sessions)} total)")
+    table.add_column("Session ID", style="cyan", width=12)
+    table.add_column("Domain", style="white", max_width=30)
+    table.add_column("Mode", style="dim", width=12)
+    table.add_column("Status", width=10)
+    table.add_column("Stages", style="yellow", max_width=35)
+    table.add_column("Age", style="dim", width=12)
+
+    now = datetime.now(timezone.utc)
+    status_colors = {
+        "running": "blue",
+        "completed": "green",
+        "failed": "red",
+        "paused": "yellow",
+    }
+
+    for s in all_sessions:
+        try:
+            created = datetime.fromisoformat(s.created_at)
+            age = now - created
+            if age.days > 0:
+                age_str = f"{age.days}d ago"
+            elif age.seconds > 3600:
+                age_str = f"{age.seconds // 3600}h ago"
+            else:
+                age_str = f"{age.seconds // 60}m ago"
+        except (ValueError, TypeError):
+            age_str = "?"
+
+        color = status_colors.get(s.status, "white")
+        status_str = f"[{color}]{s.status}[/{color}]"
+        stages_str = ", ".join(s.completed_stages[-4:]) if s.completed_stages else "[dim]—[/dim]"
+        domain_str = s.domain[:28] + "..." if len(s.domain) > 30 else s.domain
+
+        table.add_row(
+            s.session_id[:12],
+            domain_str or "[dim]—[/dim]",
+            s.mode,
+            status_str,
+            stages_str,
+            age_str,
+        )
+
+    console.print(table)
+    console.print(f"\n[dim]Use [cyan]eurekaclaw history <session-id>[/cyan] to view version details.[/dim]")
+
+
 @main.command("diff")
 @click.argument("session_id")
 @click.argument("v1", type=int)
@@ -809,6 +873,118 @@ def push_to_zotero(session_id: str, collection: str) -> None:
             console.print(f"[green]Pushed session note to '{zotero_papers[0].title[:50]}'[/green]")
 
     console.print(f"[bold green]Zotero sync complete for session {session_id[:8]}.[/bold green]")
+
+
+@main.command()
+@click.option("--older-than", default=30, type=int, help="Remove sessions older than N days")
+@click.option("--status", "filter_status", default=None, type=click.Choice(["failed", "completed", "all"]),
+              help="Only remove sessions with this status")
+@click.option("--dry-run", is_flag=True, help="Show what would be removed without removing")
+def clean(older_than: int, filter_status: str | None, dry_run: bool) -> None:
+    """Remove old session data to free disk space.
+
+    Example: eurekaclaw clean --older-than 30 --status failed
+    """
+    import shutil
+    from eurekaclaw.storage.db import SessionDB
+
+    db = SessionDB(settings.eurekaclaw_dir / "eurekaclaw.db")
+    candidates = db.list_sessions_older_than(older_than)
+
+    if filter_status and filter_status != "all":
+        candidates = [s for s in candidates if s.status == filter_status]
+
+    if not candidates:
+        console.print(f"[dim]No sessions older than {older_than} days{' with status=' + filter_status if filter_status else ''}.[/dim]")
+        return
+
+    console.print(f"\n[bold]Sessions to {'remove' if not dry_run else 'remove (dry run)'}:[/bold]")
+    for s in candidates:
+        console.print(f"  [red]{s.session_id[:12]}[/red]  {s.domain[:30]}  status={s.status}  created={s.created_at[:10]}")
+
+    total_size = 0
+    for s in candidates:
+        run_dir = settings.runs_dir / s.session_id
+        if run_dir.exists():
+            total_size += sum(f.stat().st_size for f in run_dir.rglob("*") if f.is_file())
+
+    console.print(f"\n  [bold]{len(candidates)}[/bold] session(s), ~[bold]{total_size / 1024:.0f} KB[/bold] on disk")
+
+    if dry_run:
+        console.print("[yellow]Dry run — no changes made.[/yellow]")
+        return
+
+    from rich.prompt import Confirm
+    if not Confirm.ask(f"Remove {len(candidates)} session(s)?", default=False):
+        console.print("[dim]Cancelled.[/dim]")
+        return
+
+    removed = 0
+    for s in candidates:
+        run_dir = settings.runs_dir / s.session_id
+        if run_dir.exists():
+            shutil.rmtree(run_dir)
+        db.delete_session(s.session_id)
+        removed += 1
+
+    console.print(f"[green]Removed {removed} session(s).[/green]")
+
+
+@main.command()
+@click.option("--push-papers/--no-push-papers", default=False,
+              help="Push unfiled papers from all sessions to Zotero")
+@click.option("--collection", "-c", default="EurekaClaw Library",
+              help="Zotero collection name for pushed papers")
+def housekeep(push_papers: bool, collection: str) -> None:
+    """Run housekeeping tasks across all sessions.
+
+    Example: eurekaclaw housekeep --push-papers --collection "My Research"
+    """
+    from eurekaclaw.storage.db import SessionDB
+
+    db = SessionDB(settings.eurekaclaw_dir / "eurekaclaw.db")
+    all_sessions = db.list_sessions()
+
+    console.print(f"\n[bold]Housekeeping[/bold] — {len(all_sessions)} session(s)\n")
+
+    if push_papers:
+        if not settings.zotero_api_key or not settings.zotero_library_id:
+            console.print("[red]Zotero not configured. Set ZOTERO_API_KEY and ZOTERO_LIBRARY_ID.[/red]")
+            return
+
+        try:
+            from eurekaclaw.integrations.zotero.adapter import ZoteroAdapter
+        except ImportError:
+            console.print("[red]pyzotero not installed. Install with: pip install 'eurekaclaw[zotero]'[/red]")
+            return
+
+        adapter = ZoteroAdapter(
+            library_id=settings.zotero_library_id,
+            api_key=settings.zotero_api_key,
+            library_type=settings.zotero_library_type,
+        )
+        col_key = adapter.create_collection(collection)
+
+        total_pushed = 0
+        for s in all_sessions:
+            run_dir = settings.runs_dir / s.session_id
+            bib_path = run_dir / "bibliography.json"
+            if not bib_path.exists():
+                continue
+
+            from eurekaclaw.types.artifacts import Bibliography
+            bib = Bibliography.model_validate_json(bib_path.read_text())
+            unfiled = [p for p in bib.papers if not p.zotero_item_key]
+            if unfiled:
+                keys = adapter.push_papers(unfiled, col_key)
+                total_pushed += len(keys)
+                if keys:
+                    console.print(f"  [green]{s.session_id[:8]}[/green]: pushed {len(keys)} papers")
+
+        console.print(f"\n[bold green]Pushed {total_pushed} total papers to Zotero collection '{collection}'.[/bold green]")
+    else:
+        console.print("[dim]No tasks specified. Use --push-papers to push unfiled papers to Zotero.[/dim]")
+        console.print("[dim]Use 'eurekaclaw clean' to remove old sessions.[/dim]")
 
 
 @main.command()
