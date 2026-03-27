@@ -6,7 +6,8 @@ from eurekaclaw.types.artifacts import ResearchBrief, Bibliography, Paper
 
 
 @pytest.fixture
-def bus(tmp_path) -> KnowledgeBus:
+def bus(tmp_path, monkeypatch) -> KnowledgeBus:
+    monkeypatch.setattr("eurekaclaw.config.settings.eurekaclaw_dir", tmp_path)
     b = KnowledgeBus("test-int-001")
     b._session_dir = tmp_path / "runs" / "test-int-001"
     return b
@@ -64,3 +65,16 @@ def test_version_store_loaded_on_bus_load(bus, tmp_path):
     restored = KnowledgeBus.load("test-int-001", tmp_path / "runs" / "test-int-001")
     assert restored.version_store is not None
     assert len(restored.version_store.log()) == 1
+
+
+def test_version_store_uses_sqlite(bus, tmp_path):
+    bus.put_research_brief(ResearchBrief(
+        session_id="test-int-001",
+        input_mode="exploration",
+        domain="test",
+        query="test",
+    ))
+    bus.persist_incremental(completed_stage="survey")
+    # Verify SQLite DB was created
+    db_path = tmp_path / "eurekaclaw.db"
+    assert db_path.exists()

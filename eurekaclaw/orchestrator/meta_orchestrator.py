@@ -114,6 +114,8 @@ class MetaOrchestrator:
         brief = self._init_brief(input_spec)
         self.bus.put_research_brief(brief)
         console.print(f"\n[bold green]EurekaClaw[/bold green] session: {brief.session_id}")
+        # Register session in SQLite database
+        self._register_session(brief)
         plugin_name = self.domain_plugin.display_name if self.domain_plugin else "general"
         console.print(f"Domain: {brief.domain} ({plugin_name}) | Mode: {input_spec.mode} | Learning: {settings.eurekaclaw_mode}\n")
         if self.domain_plugin:
@@ -261,6 +263,14 @@ class MetaOrchestrator:
         self.bus.persist(session_dir)
         console.print(f"\n[bold green]Session complete![/bold green] Artifacts saved to {session_dir}")
 
+        # Update session status in DB
+        try:
+            from eurekaclaw.storage.db import SessionDB
+            db = SessionDB(settings.eurekaclaw_dir / "eurekaclaw.db")
+            db.update_session(brief.session_id, status="completed")
+        except Exception:
+            pass
+
         return output
 
     def _init_brief(self, spec: InputSpec) -> ResearchBrief:
@@ -274,6 +284,21 @@ class MetaOrchestrator:
             selected_skills=spec.selected_skills,
             reference_paper_ids=spec.paper_ids,
         )
+
+    def _register_session(self, brief: ResearchBrief) -> None:
+        """Register the session in the SQLite database."""
+        try:
+            from eurekaclaw.storage.db import SessionDB
+            db = SessionDB(settings.eurekaclaw_dir / "eurekaclaw.db")
+            db.create_session(
+                session_id=brief.session_id,
+                domain=brief.domain,
+                query=brief.query or "",
+                mode=brief.input_mode,
+                status="running",
+            )
+        except Exception as e:
+            logger.warning("Failed to register session in DB: %s", e)
 
     async def _handle_direction_gate(self, brief: ResearchBrief) -> None:
         """Run Divergent-Convergent planner before the direction gate.

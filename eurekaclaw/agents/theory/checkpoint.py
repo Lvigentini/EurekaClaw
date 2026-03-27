@@ -45,7 +45,7 @@ class ProofCheckpoint:
 
     def __init__(self, session_id: str) -> None:
         self.session_id = session_id
-        self._dir = settings.eurekaclaw_dir / "sessions" / session_id
+        self._dir = settings.eurekaclaw_dir / "runs" / session_id
         self._pause_flag = self._dir / _PAUSE_FLAG
         self._checkpoint = self._dir / _CHECKPOINT_FILE
 
