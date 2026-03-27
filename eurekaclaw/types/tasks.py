@@ -93,7 +93,7 @@ class InputSpec(BaseModel):
         Required field: ``domain``.
     """
 
-    mode: Literal["detailed", "reference", "exploration"]
+    mode: Literal["detailed", "reference", "exploration", "from_bib", "from_draft", "from_zotero"]
     # Level 1: detailed conjecture
     conjecture: str | None = None
     # Level 2: reference-based (paper IDs or raw texts)
@@ -105,8 +105,15 @@ class InputSpec(BaseModel):
     query: str = ""
     additional_context: str = ""
     draft_path: str | None = None
-    draft_instruction: str = ""  # free-text: "This is my WIP...", "Extend this..."
+    draft_instruction: str = ""
     selected_skills: list[str] = Field(default_factory=list)
+    # from_bib mode
+    bib_content: str = ""           # raw .bib file content (pasted in UI)
+    pdf_dir: str = ""               # optional local path to PDF directory
+    # from_draft mode
+    draft_content: str = ""         # raw draft text (pasted in UI)
+    # from_zotero mode
+    zotero_collection_id: str = ""  # Zotero collection key
 
 
 class ResearchOutput(BaseModel):

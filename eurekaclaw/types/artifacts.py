@@ -78,7 +78,7 @@ class ResearchDirection(BaseModel):
 
 class ResearchBrief(BaseModel):
     session_id: str
-    input_mode: Literal["detailed", "reference", "exploration"]
+    input_mode: Literal["detailed", "reference", "exploration", "from_bib", "from_draft", "from_zotero"]
     domain: str
     query: str
     conjecture: str | None = None
