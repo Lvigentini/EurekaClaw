@@ -525,10 +525,10 @@ class PaperReader:
         chunks = _chunk_markdown(text)
         if not chunks:
             logger.warning(
-                "PaperReader: Docling produced no usable markdown chunks for '%s' (arxiv_id=%s, markdown_chars=%d)",
+                "PaperReader: PDF produced no usable chunks for '%s' (arxiv_id=%s, text_chars=%d)",
                 title,
                 arxiv_id,
-                len(markdown),
+                len(text),
             )
             return []
 
@@ -539,8 +539,8 @@ class PaperReader:
         )
 
         logger.info(
-            "PaperReader: %d markdown chunks prepared from '%s' (markdown_chars=%d); extracting from %d soft-selected chunks",
-            len(chunks), title, len(markdown), len(selected_chunks),
+            "PaperReader: %d chunks prepared from '%s' (text_chars=%d); extracting from %d soft-selected chunks",
+            len(chunks), title, len(text), len(selected_chunks),
         )
         results: list[KnownResult] = []
         parseable_chunks = 0
