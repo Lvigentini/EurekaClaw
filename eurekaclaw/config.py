@@ -69,8 +69,8 @@ class Config(BaseSettings):
     theory_max_iterations: int = Field(default=10, alias="THEORY_MAX_ITERATIONS")
     theory_review_max_retries: int = Field(default=3, alias="THEORY_REVIEW_MAX_RETRIES")
     use_docker_sandbox: bool = Field(default=False, alias="USE_DOCKER_SANDBOX")
-    # Output format for the generated paper: "latex" (default) or "markdown"
-    output_format: str = Field(default="latex", alias="OUTPUT_FORMAT")
+    # Output format: "all" (default, .md + .tex + .pdf), "latex" (.tex + .pdf), or "markdown" (.md only)
+    output_format: Literal["all", "latex", "markdown"] = Field(default="all", alias="OUTPUT_FORMAT")
 
     # ---- Token-efficiency knobs --------------------------------------------
     context_compress_after_turns: int = Field(default=6, alias="CONTEXT_COMPRESS_AFTER_TURNS")
