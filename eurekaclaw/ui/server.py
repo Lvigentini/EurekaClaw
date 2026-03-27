@@ -845,6 +845,81 @@ class UIRequestHandler(SimpleHTTPRequestHandler):
             self._send_file(_art_path)
             return
 
+        # Version history: /api/runs/<run_id>/versions
+        if parsed.path.endswith("/versions") and parsed.path.startswith("/api/runs/"):
+            run_id = parsed.path.split("/")[3]
+            try:
+                from eurekaclaw.versioning.store import VersionStore
+                session_dir = settings.runs_dir / run_id
+                if not session_dir.exists():
+                    self._send_json({"error": "Session not found"}, status=HTTPStatus.NOT_FOUND)
+                    return
+                store = VersionStore(run_id, session_dir)
+                versions = [
+                    {
+                        "version_number": v.version_number,
+                        "trigger": v.trigger,
+                        "timestamp": v.timestamp.isoformat(),
+                        "completed_stages": v.completed_stages,
+                        "changes": v.changes,
+                    }
+                    for v in store.log()
+                ]
+                self._send_json({"versions": versions})
+            except Exception as exc:
+                self._send_json({"versions": [], "error": str(exc)})
+            return
+
+        # Content gap analysis: /api/runs/<run_id>/content-gap
+        if parsed.path.endswith("/content-gap") and parsed.path.startswith("/api/runs/"):
+            run_id = parsed.path.split("/")[3]
+            bib_path = settings.runs_dir / run_id / "bibliography.json"
+            if not bib_path.exists():
+                self._send_json({"error": "No bibliography found"}, status=HTTPStatus.NOT_FOUND)
+                return
+            try:
+                from eurekaclaw.types.artifacts import Bibliography
+                from eurekaclaw.analyzers.content_gap import ContentGapAnalyzer
+                bib = Bibliography.model_validate_json(bib_path.read_text())
+                report = ContentGapAnalyzer.analyze(bib)
+                degraded = report.abstract_only + report.metadata_only + report.missing
+                self._send_json({
+                    "full_text": len(report.full_text),
+                    "abstract_only": len(report.abstract_only),
+                    "metadata_only": len(report.metadata_only),
+                    "missing": len(report.missing),
+                    "has_gaps": report.has_gaps,
+                    "degraded_papers": [
+                        {"paper_id": p.paper_id, "title": p.title, "content_tier": p.content_tier, "arxiv_id": p.arxiv_id}
+                        for p in degraded[:10]
+                    ],
+                })
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
+
+        # Ideation pool: /api/runs/<run_id>/ideation-pool
+        if parsed.path.endswith("/ideation-pool") and parsed.path.startswith("/api/runs/"):
+            run_id = parsed.path.split("/")[3]
+            pool_path = settings.runs_dir / run_id / "ideation_pool.json"
+            if not pool_path.exists():
+                self._send_json({"directions": [], "injected_ideas": [], "emerged_insights": [], "has_new_input": False, "version": 0})
+                return
+            try:
+                from eurekaclaw.orchestrator.ideation_pool import IdeationPool
+                pool = IdeationPool.model_validate_json(pool_path.read_text())
+                self._send_json({
+                    "directions": [d.model_dump() for d in pool.directions],
+                    "selected_direction": pool.selected_direction.model_dump() if pool.selected_direction else None,
+                    "injected_ideas": [i.model_dump() for i in pool.injected_ideas],
+                    "emerged_insights": pool.emerged_insights,
+                    "has_new_input": pool.has_new_input,
+                    "version": pool.version,
+                })
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
+
         if parsed.path.startswith("/api/runs/"):
             run_id = parsed.path.split("/")[-1]
             run = self.state.get_run(run_id)
@@ -853,6 +928,62 @@ class UIRequestHandler(SimpleHTTPRequestHandler):
                 return
             self._send_json(self.state.snapshot_run(run))
             return
+
+        if parsed.path == "/api/zotero/status":
+            self._send_json({
+                "configured": bool(settings.zotero_api_key and settings.zotero_library_id),
+                "api_key_set": bool(settings.zotero_api_key),
+                "library_id": settings.zotero_library_id,
+            })
+            return
+
+        if parsed.path == "/api/zotero/collections":
+            if not settings.zotero_api_key or not settings.zotero_library_id:
+                self._send_json({"error": "Zotero not configured"}, status=HTTPStatus.BAD_REQUEST)
+                return
+            try:
+                from eurekaclaw.integrations.zotero.adapter import ZoteroAdapter
+                adapter = ZoteroAdapter(
+                    library_id=settings.zotero_library_id,
+                    api_key=settings.zotero_api_key,
+                    library_type=settings.zotero_library_type,
+                )
+                collections = adapter._zot.collections()
+                result = [
+                    {"key": c["key"], "name": c["data"].get("name", ""), "num_items": c["meta"].get("numItems", 0)}
+                    for c in collections
+                ]
+                self._send_json({"collections": result})
+            except ImportError:
+                self._send_json({"error": "pyzotero not installed"}, status=HTTPStatus.BAD_REQUEST)
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
+
+        if parsed.path == "/api/sessions":
+            try:
+                from eurekaclaw.storage.db import SessionDB
+                db = SessionDB(settings.eurekaclaw_dir / "eurekaclaw.db")
+                sessions = db.list_sessions()
+                self._send_json({
+                    "sessions": [
+                        {
+                            "session_id": s.session_id,
+                            "domain": s.domain,
+                            "query": s.query,
+                            "mode": s.mode,
+                            "status": s.status,
+                            "created_at": s.created_at,
+                            "updated_at": s.updated_at,
+                            "completed_stages": s.completed_stages,
+                        }
+                        for s in sessions
+                    ]
+                })
+            except Exception as exc:
+                self._send_json({"sessions": [], "error": str(exc)})
+            return
+
         if parsed.path == "/api/oauth/status":
             available = is_ccproxy_available()
             if not available:
@@ -1040,6 +1171,163 @@ class UIRequestHandler(SimpleHTTPRequestHandler):
             result = _install_skill(skillname)
             status = HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST
             self._send_json(result, status=status)
+            return
+
+        # Version diff: /api/runs/<run_id>/versions/diff
+        if "/versions/diff" in parsed.path and parsed.path.startswith("/api/runs/"):
+            run_id = parsed.path.split("/")[3]
+            payload = self._read_json()
+            v1 = payload.get("v1")
+            v2 = payload.get("v2")
+            if v1 is None or v2 is None:
+                self._send_json({"error": "v1 and v2 are required"}, status=HTTPStatus.BAD_REQUEST)
+                return
+            try:
+                from eurekaclaw.versioning.store import VersionStore
+                from eurekaclaw.versioning.diff import diff_versions
+                session_dir = settings.runs_dir / run_id
+                store = VersionStore(run_id, session_dir)
+                changes = diff_versions(store, int(v1), int(v2))
+                self._send_json({"changes": changes})
+            except ValueError as exc:
+                self._send_json({"error": str(exc)}, status=HTTPStatus.NOT_FOUND)
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
+
+        # Version checkout: /api/runs/<run_id>/versions/checkout
+        if "/versions/checkout" in parsed.path and parsed.path.startswith("/api/runs/"):
+            run_id = parsed.path.split("/")[3]
+            payload = self._read_json()
+            version_number = payload.get("version_number")
+            if version_number is None:
+                self._send_json({"error": "version_number is required"}, status=HTTPStatus.BAD_REQUEST)
+                return
+            try:
+                from eurekaclaw.versioning.store import VersionStore
+                session_dir = settings.runs_dir / run_id
+                store = VersionStore(run_id, session_dir)
+                target = store.get(int(version_number))
+                if target is None:
+                    self._send_json({"error": f"Version {version_number} not found"}, status=HTTPStatus.NOT_FOUND)
+                    return
+                bus = store.checkout(int(version_number))
+                store.commit(
+                    bus,
+                    trigger=f"checkout:v{int(version_number):03d}",
+                    completed_stages=target.completed_stages,
+                    changes=[f"Restored state from v{int(version_number):03d}"],
+                )
+                bus._session_dir = session_dir
+                bus.persist(session_dir)
+                head = store.head
+                self._send_json({
+                    "ok": True,
+                    "new_head": head.version_number if head else 0,
+                    "completed_stages": target.completed_stages,
+                })
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
+
+        # Ideation pool injection: /api/runs/<run_id>/ideation-pool/inject
+        if "/ideation-pool/inject" in parsed.path and parsed.path.startswith("/api/runs/"):
+            run_id = parsed.path.split("/")[3]
+            payload = self._read_json()
+            inject_type = payload.get("type", "idea")  # "idea", "paper", "draft"
+            text = payload.get("text", "").strip()
+            source = payload.get("source", "ui")
+            if not text:
+                self._send_json({"error": "text is required"}, status=HTTPStatus.BAD_REQUEST)
+                return
+            try:
+                from eurekaclaw.knowledge_bus.bus import KnowledgeBus
+                from eurekaclaw.orchestrator.ideation_pool import IdeationPool
+                from eurekaclaw.types.artifacts import Paper, Bibliography
+                session_dir = settings.runs_dir / run_id
+                bus = KnowledgeBus.load(run_id, session_dir)
+                pool = bus.get_ideation_pool() or IdeationPool()
+
+                if inject_type == "paper":
+                    # Add to bibliography
+                    bib = bus.get_bibliography() or Bibliography(session_id=run_id)
+                    paper = Paper(paper_id=text, title=f"Paper {text}", authors=[], arxiv_id=text if text[0].isdigit() else None, source="user_provided", content_tier="metadata")
+                    bib.papers.append(paper)
+                    bus.put_bibliography(bib)
+                    pool.inject_idea(f"New paper added: {text}", source=f"inject:paper:{text}")
+                elif inject_type == "draft":
+                    pool.inject_idea(f"Draft content injected: {text[:100]}", source="inject:draft")
+                    brief = bus.get_research_brief()
+                    if brief:
+                        brief.draft_summary = text[:500]
+                        bus.put_research_brief(brief)
+                else:
+                    pool.inject_idea(text, source=source)
+
+                bus.put_ideation_pool(pool)
+                bus._session_dir = session_dir
+                bus.persist_incremental()
+                version_num = bus.version_store.head.version_number if bus.version_store and bus.version_store.head else 0
+                self._send_json({"ok": True, "pool_version": pool.version, "session_version": version_num})
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
+
+        # Push to Zotero: /api/runs/<run_id>/push-to-zotero
+        if "/push-to-zotero" in parsed.path and parsed.path.startswith("/api/runs/"):
+            run_id = parsed.path.split("/")[3]
+            payload = self._read_json()
+            collection_name = payload.get("collection_name", "EurekaClaw Results")
+            if not settings.zotero_api_key or not settings.zotero_library_id:
+                self._send_json({"error": "Zotero not configured"}, status=HTTPStatus.BAD_REQUEST)
+                return
+            try:
+                from eurekaclaw.integrations.zotero.adapter import ZoteroAdapter
+                from eurekaclaw.types.artifacts import Bibliography
+                adapter = ZoteroAdapter(
+                    library_id=settings.zotero_library_id,
+                    api_key=settings.zotero_api_key,
+                    library_type=settings.zotero_library_type,
+                )
+                col_key = adapter.create_collection(collection_name)
+                bib_path = settings.runs_dir / run_id / "bibliography.json"
+                papers_pushed = 0
+                if bib_path.exists():
+                    bib = Bibliography.model_validate_json(bib_path.read_text())
+                    unfiled = [p for p in bib.papers if not p.zotero_item_key]
+                    if unfiled:
+                        keys = adapter.push_papers(unfiled, col_key)
+                        papers_pushed = len(keys)
+                self._send_json({"ok": True, "papers_pushed": papers_pushed, "collection_key": col_key})
+            except ImportError:
+                self._send_json({"error": "pyzotero not installed"}, status=HTTPStatus.BAD_REQUEST)
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
+
+        if parsed.path == "/api/sessions/clean":
+            payload = self._read_json()
+            older_than_days = int(payload.get("older_than_days", 30))
+            status_filter = payload.get("status_filter")
+            try:
+                from eurekaclaw.storage.db import SessionDB
+                import shutil as _shutil
+                db = SessionDB(settings.eurekaclaw_dir / "eurekaclaw.db")
+                candidates = db.list_sessions_older_than(older_than_days)
+                if status_filter and status_filter != "all":
+                    candidates = [s for s in candidates if s.status == status_filter]
+                removed = 0
+                freed_bytes = 0
+                for s in candidates:
+                    run_dir = settings.runs_dir / s.session_id
+                    if run_dir.exists():
+                        freed_bytes += sum(f.stat().st_size for f in run_dir.rglob("*") if f.is_file())
+                        _shutil.rmtree(run_dir)
+                    db.delete_session(s.session_id)
+                    removed += 1
+                self._send_json({"removed": removed, "freed_kb": round(freed_bytes / 1024, 1)})
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
             return
 
         # Gate submission endpoints: /api/runs/<run_id>/gate/{survey|direction|theory}
