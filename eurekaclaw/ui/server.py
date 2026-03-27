@@ -541,6 +541,106 @@ class UIServerState:
             run.updated_at = datetime.utcnow()
             self._persist_run(run)
 
+    @staticmethod
+    def _preprocess_input_mode(session: EurekaSession, spec: InputSpec) -> None:
+        """Pre-populate the session bus for alternative entry modes (from_bib, from_draft, from_zotero)."""
+        from eurekaclaw.types.artifacts import Bibliography
+
+        mode = spec.mode
+
+        if mode == "from_bib" and spec.bib_content:
+            import tempfile
+            from eurekaclaw.analyzers.bib_loader import BibLoader
+            # Parse bib content from the UI textarea
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".bib", delete=False) as f:
+                f.write(spec.bib_content)
+                bib_path = Path(f.name)
+            try:
+                papers = BibLoader.load_bib(bib_path)
+            finally:
+                bib_path.unlink(missing_ok=True)
+            if spec.pdf_dir:
+                papers = BibLoader.match_pdfs(papers, Path(spec.pdf_dir).expanduser())
+                for p in papers:
+                    if p.local_pdf_path:
+                        try:
+                            import pdfplumber
+                            with pdfplumber.open(p.local_pdf_path) as pdf:
+                                pages = [page.extract_text() or "" for page in pdf.pages]
+                                p.full_text = "\n\n".join(pages)
+                                p.content_tier = "full_text"
+                        except Exception:
+                            pass
+            if papers:
+                bib = Bibliography(session_id=session.session_id, papers=papers)
+                session.bus.put_bibliography(bib)
+                spec.paper_ids = [p.paper_id for p in papers]
+            if not spec.query:
+                n = len(papers) if papers else 0
+                spec.query = (
+                    f"You have {n} papers from the user's bibliography in {spec.domain}. "
+                    f"Do NOT re-search for them. Identify gaps in coverage and find complementary work."
+                )
+            # Route through reference mode for the pipeline
+            spec.mode = "reference"
+
+        elif mode == "from_draft" and spec.draft_content:
+            from eurekaclaw.analyzers.draft_analyzer import DraftAnalyzer, DraftAnalysis
+            import tempfile
+            # Write draft content to temp file for analyzer
+            suffix = ".tex" if "\\documentclass" in spec.draft_content else ".md"
+            with tempfile.NamedTemporaryFile(mode="w", suffix=suffix, delete=False) as f:
+                f.write(spec.draft_content)
+                draft_path = Path(f.name)
+            try:
+                analysis = DraftAnalyzer.analyze(draft_path)
+            finally:
+                draft_path.unlink(missing_ok=True)
+            # Build context from analysis
+            parts = []
+            if spec.draft_instruction:
+                parts.append(f"User instruction: {spec.draft_instruction}")
+            if analysis.title:
+                parts.append(f"Draft title: {analysis.title}")
+            if analysis.abstract:
+                parts.append(f"Draft abstract: {analysis.abstract[:500]}")
+            if analysis.claims:
+                parts.append("Draft claims:\n" + "\n".join(f"  - {c[:150]}" for c in analysis.claims))
+            if analysis.gaps:
+                parts.append("Gaps/TODOs:\n" + "\n".join(f"  - {g}" for g in analysis.gaps))
+            spec.additional_context = "\n\n".join(parts)
+            if not spec.domain:
+                spec.domain = analysis.title or "research"
+            if not spec.query:
+                spec.query = (
+                    f"The user has a draft paper titled '{analysis.title[:80]}'. "
+                    f"Survey related work and identify what's missing."
+                )
+            spec.mode = "exploration"
+
+        elif mode == "from_zotero" and spec.zotero_collection_id:
+            if not settings.zotero_api_key or not settings.zotero_library_id:
+                raise ValueError("Zotero not configured. Set ZOTERO_API_KEY and ZOTERO_LIBRARY_ID.")
+            from eurekaclaw.integrations.zotero.adapter import ZoteroAdapter
+            adapter = ZoteroAdapter(
+                library_id=settings.zotero_library_id,
+                api_key=settings.zotero_api_key,
+                library_type=settings.zotero_library_type,
+                local_data_dir=settings.zotero_local_data_dir or None,
+            )
+            papers = adapter.import_collection(spec.zotero_collection_id)
+            if papers:
+                bib = Bibliography(session_id=session.session_id, papers=papers)
+                session.bus.put_bibliography(bib)
+                spec.paper_ids = [p.paper_id for p in papers]
+            if not spec.query:
+                n = len(papers) if papers else 0
+                spec.query = (
+                    f"You have {n} papers from the user's Zotero library in {spec.domain}. "
+                    f"Do NOT re-search for them. Identify gaps and find complementary work."
+                )
+            spec.mode = "reference"
+
     def _execute_run(self, run_id: str) -> None:
         run = self.get_run(run_id)
         if run is None:
@@ -559,14 +659,15 @@ class UIServerState:
             run.eureka_session = session
             run.eureka_session_id = session.session_id
 
+            # Pre-process alternative entry modes before pipeline runs
+            self._preprocess_input_mode(session, run.input_spec)
+
             from eurekaclaw.ui import review_gate as _rg
             _rg.register_survey(session.session_id)
             _rg.register_direction(session.session_id)
             _rg.register_theory(session.session_id)
 
             with _temporary_auth_env(config):
-                # asyncio.run() can be unreliable in non-main threads on some
-                # Python versions.  Creating an explicit loop is safer.
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 try:
