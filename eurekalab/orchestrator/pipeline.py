@@ -12,8 +12,17 @@ import yaml  # type: ignore[import-untyped]
 from eurekalab.types.artifacts import ResearchBrief
 from eurekalab.types.tasks import Task, TaskPipeline
 
-# Bundled default spec, shipped with the package
-_DEFAULT_SPEC = Path(__file__).parent / "pipelines" / "default_pipeline.yaml"
+# Bundled pipeline specs, shipped with the package
+_PIPELINES_DIR = Path(__file__).parent / "pipelines"
+_DEFAULT_SPEC = _PIPELINES_DIR / "default_pipeline.yaml"
+
+_PIPELINE_BY_TYPE: dict[str, Path] = {
+    "proof": _PIPELINES_DIR / "proof_pipeline.yaml",
+    "survey": _PIPELINES_DIR / "survey_pipeline.yaml",
+    "review": _PIPELINES_DIR / "review_pipeline.yaml",
+    "experimental": _PIPELINES_DIR / "experimental_pipeline.yaml",
+    "discussion": _PIPELINES_DIR / "discussion_pipeline.yaml",
+}
 
 
 class PipelineManager:
@@ -37,7 +46,10 @@ class PipelineManager:
             spec_path: Path to a pipeline YAML spec.  When omitted the bundled
                        ``default_pipeline.yaml`` is used.
         """
-        path = spec_path or _DEFAULT_SPEC
+        if spec_path is None:
+            paper_type = getattr(brief, "paper_type", "proof")
+            spec_path = _PIPELINE_BY_TYPE.get(paper_type, _DEFAULT_SPEC)
+        path = spec_path
         spec = self._load_spec(path)
         return self._build_from_spec(spec, brief)
 

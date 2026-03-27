@@ -9,6 +9,7 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Prompt
 
+from eurekalab.agents.analyst.agent import AnalystAgent
 from eurekalab.agents.base import BaseAgent
 from eurekalab.agents.experiment.agent import ExperimentAgent
 from eurekalab.agents.ideation.agent import IdeationAgent
@@ -77,6 +78,7 @@ class MetaOrchestrator:
             AgentRole.IDEATION: IdeationAgent(**agent_kwargs),
             AgentRole.THEORY: TheoryAgent(**agent_kwargs),
             AgentRole.EXPERIMENT: ExperimentAgent(**agent_kwargs),
+            AgentRole.ANALYST: AnalystAgent(**agent_kwargs),
             AgentRole.WRITER: WriterAgent(**agent_kwargs),
         }
 

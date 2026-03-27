@@ -1,0 +1,58 @@
+# EurekaLab experimental study pipeline
+#
+# Produces an experimental paper: hypothesis, methodology, experiments,
+# statistical analysis, results, discussion.
+
+stages:
+  - name: survey
+    agent_role: survey
+    description: "Literature survey to establish baselines and identify gaps"
+    inputs:
+      domain: "{{brief.domain}}"
+      query: "{{brief.query}}"
+    depends_on: []
+    gate_required: false
+    max_retries: 3
+
+  - name: ideation
+    agent_role: ideation
+    description: "Generate testable hypotheses with variables and expected effects"
+    inputs:
+      domain: "{{brief.domain}}"
+    depends_on: [survey]
+    gate_required: false
+    max_retries: 3
+
+  - name: direction_selection_gate
+    agent_role: orchestrator
+    description: "Select hypothesis and approve experimental approach"
+    inputs: {}
+    depends_on: [ideation]
+    gate_required: false
+    max_retries: 3
+
+  - name: analysis
+    agent_role: analyst
+    description: "Design experiment: datasets, baselines, metrics, statistical tests"
+    inputs:
+      domain: "{{brief.domain}}"
+      task_type: "experiment_design"
+    depends_on: [direction_selection_gate]
+    gate_required: false
+    max_retries: 2
+
+  - name: experiment
+    agent_role: experiment
+    description: "Run experiments and collect results"
+    inputs: {}
+    depends_on: [analysis]
+    gate_required: false
+    max_retries: 1
+
+  - name: writer
+    agent_role: writer
+    description: "Write experimental paper: methods, results, discussion"
+    inputs: {}
+    depends_on: [experiment]
+    gate_required: false
+    max_retries: 3

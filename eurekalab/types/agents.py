@@ -13,6 +13,7 @@ class AgentRole(str, Enum):
     IDEATION = "ideation"
     THEORY = "theory"
     EXPERIMENT = "experiment"
+    ANALYST = "analyst"
     WRITER = "writer"
     ORCHESTRATOR = "orchestrator"
 

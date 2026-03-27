@@ -1,0 +1,50 @@
+# EurekaLab systematic review pipeline (PRISMA-style)
+#
+# Produces a systematic literature review with protocol, screening, quality
+# assessment, data extraction, and synthesis.
+
+stages:
+  - name: survey
+    agent_role: survey
+    description: "Systematic literature search following defined protocol"
+    inputs:
+      domain: "{{brief.domain}}"
+      query: "{{brief.query}}"
+    depends_on: []
+    gate_required: false
+    max_retries: 3
+
+  - name: ideation
+    agent_role: ideation
+    description: "Define research questions and inclusion/exclusion criteria"
+    inputs:
+      domain: "{{brief.domain}}"
+    depends_on: [survey]
+    gate_required: false
+    max_retries: 3
+
+  - name: direction_selection_gate
+    agent_role: orchestrator
+    description: "Approve review protocol and screening criteria"
+    inputs: {}
+    depends_on: [ideation]
+    gate_required: false
+    max_retries: 3
+
+  - name: analysis
+    agent_role: analyst
+    description: "Screen papers, assess quality, extract data, synthesize findings"
+    inputs:
+      domain: "{{brief.domain}}"
+      task_type: "systematic_review"
+    depends_on: [direction_selection_gate]
+    gate_required: false
+    max_retries: 2
+
+  - name: writer
+    agent_role: writer
+    description: "Write systematic review with PRISMA flow, summary tables, synthesis"
+    inputs: {}
+    depends_on: [analysis]
+    gate_required: false
+    max_retries: 3
