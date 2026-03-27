@@ -4,6 +4,36 @@ Summary of all updates from `UPDATES.md`.
 
 ---
 
+## v0.4.0 — 2026-03-27 (SQLite Storage Refactor)
+
+### SQLite Session Database
+- `SessionDB` with sessions + versions tables (WAL mode, cascading deletes)
+- Version history migrated from JSON files to SQLite
+- Session metadata (domain, query, status, mode, stages) stored in DB
+- Auto-registered at pipeline start, updated on completion
+
+### Consolidated Storage
+- Checkpoint files moved from `sessions/<id>/` to `runs/<id>/` (one dir per session)
+- `_stage_progress.json` superseded by DB-backed version tracking
+- `versions/` folder replaced by SQLite `versions` table
+
+### New CLI Commands
+- `eurekaclaw sessions` — list all sessions in a Rich table (status, domain, stages, age)
+- `eurekaclaw clean --older-than 30 --status failed` — prune old sessions with disk usage report
+- `eurekaclaw housekeep --push-papers` — push unfiled papers from all sessions to Zotero
+
+### CLI Improvements
+- `history` shows session context panel (domain, query, status) before version table
+- `inject` commands now show the version number created
+- `checkout` shows the next available stage after restore
+- `from-bib` shows a summary panel (paper count, full text count, domain)
+
+### Stats
+- 193 tests (16 new for SessionDB)
+- Database: `~/.eurekaclaw/eurekaclaw.db`
+
+---
+
 ## v0.3.0 — 2026-03-27 (Non-Linear Pipeline Redesign)
 
 ### Phase 0: Version Store

@@ -4,10 +4,11 @@ Multi-agent system for theoretical research — proof-heavy, formalism-rich, mat
 
 ## Quick Reference
 
-- **Version:** 0.3.0
+- **Version:** 0.4.0
 - **Python:** 3.11+
 - **Entry:** `eurekaclaw/cli.py` (Click CLI), `eurekaclaw/main.py` (EurekaSession)
-- **Tests:** `pytest tests/ -v` (177 tests, ~6s)
+- **Tests:** `pytest tests/ -v` (193 tests, ~6s)
+- **Database:** `~/.eurekaclaw/eurekaclaw.db` (SQLite — session metadata + version history)
 - **Package:** `pip install -e "."` (or `pip install -e ".[all]"` for all extras)
 
 ## Architecture
@@ -24,7 +25,8 @@ Pipeline is defined in `eurekaclaw/orchestrator/pipelines/default_pipeline.yaml`
 |-----------|------|---------|
 | KnowledgeBus | `eurekaclaw/knowledge_bus/bus.py` | Central artifact store, reactive subscriptions |
 | MetaOrchestrator | `eurekaclaw/orchestrator/meta_orchestrator.py` | Pipeline execution, gates, feedback |
-| VersionStore | `eurekaclaw/versioning/store.py` | Git-like session versioning |
+| VersionStore | `eurekaclaw/versioning/store.py` | Git-like session versioning (SQLite backend) |
+| SessionDB | `eurekaclaw/storage/db.py` | SQLite for session metadata + versions |
 | IdeationPool | `eurekaclaw/orchestrator/ideation_pool.py` | Continuous ideation, injected ideas |
 | GateController | `eurekaclaw/orchestrator/gate.py` | Human/auto gates, content status |
 | Config | `eurekaclaw/config.py` | Pydantic Settings, all env vars |
@@ -49,7 +51,10 @@ All in `eurekaclaw/types/artifacts.py` and `eurekaclaw/types/tasks.py`:
 | `from-zotero` | Start from a Zotero collection |
 | `inject paper/idea/draft` | Mid-session injection |
 | `history/diff/checkout` | Version management |
-| `push-to-zotero` | Sync results back to Zotero |
+| `sessions` | List all sessions (from SQLite) |
+| `clean` | Remove old sessions |
+| `housekeep` | Global maintenance (push papers to Zotero) |
+| `push-to-zotero` | Sync session results back to Zotero |
 
 ## Conventions
 
