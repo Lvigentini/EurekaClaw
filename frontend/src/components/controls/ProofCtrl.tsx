@@ -7,6 +7,7 @@ import { getActiveOuterStage, friendlyInnerStage } from '@/lib/statusHelpers';
 import { humanize } from '@/lib/formatters';
 import { StageTrack } from './StageTrack';
 import { TheoryFeedback } from './TheoryFeedback';
+import { InjectionDrawer } from './InjectionDrawer';
 import type { SessionRun } from '@/types';
 
 interface ProofCtrlProps {
@@ -144,6 +145,7 @@ export function ProofCtrl({ run, onRestartFast }: ProofCtrlProps) {
               </div>
             </div>
             <TheoryFeedback theoryState={run.artifacts?.theory_state} feedbackRef={feedbackRef} />
+            <InjectionDrawer run={run} />
             <div className="proof-ctrl-paused-actions">
               <button className="proof-ctrl-resume-btn" id="resume-session-btn" aria-label="Continue research from saved checkpoint" onClick={() => void handleResume()}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>

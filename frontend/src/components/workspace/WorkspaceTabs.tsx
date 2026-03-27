@@ -3,6 +3,7 @@ import { LivePanel } from './LivePanel';
 import { ProofPanel } from './ProofPanel';
 import { PaperPanel } from './PaperPanel';
 import { LogsPanel } from './LogsPanel';
+import { VersionPanel } from './VersionPanel';
 import type { SessionRun } from '@/types';
 
 interface WorkspaceTabsProps {
@@ -14,6 +15,7 @@ const TABS = [
   { key: 'proof', label: 'Proof' },
   { key: 'paper', label: 'Paper' },
   { key: 'logs', label: 'Logs' },
+  { key: 'history', label: 'History' },
 ] as const;
 
 type TabKey = typeof TABS[number]['key'];
@@ -51,6 +53,9 @@ export function WorkspaceTabs({ run }: WorkspaceTabsProps) {
       </div>
       <div className={`ws-panel${activeWsTab === 'logs' ? ' is-visible' : ''}`} id="ws-panel-logs" role="tabpanel">
         <LogsPanel run={run} />
+      </div>
+      <div className={`ws-panel${activeWsTab === 'history' ? ' is-visible' : ''}`} id="ws-panel-history" role="tabpanel">
+        <VersionPanel run={run} />
       </div>
     </div>
   );

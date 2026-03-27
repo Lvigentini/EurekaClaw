@@ -6,6 +6,8 @@ import { agentNarrativeLine } from '@/lib/agentManifest';
 import { friendlyInnerStage } from '@/lib/statusHelpers';
 import { titleCase, escapeHtml, humanize } from '@/lib/formatters';
 import { apiPost } from '@/api/client';
+import { ContentGapBanner } from './ContentGapBanner';
+import { IdeationPanel } from './IdeationPanel';
 
 interface LivePanelProps {
   run: SessionRun | null;
@@ -203,6 +205,11 @@ export function LivePanel({ run }: LivePanelProps) {
     );
   }
 
+  // Show content gap and ideation panels alongside running/paused/completed states
+  const surveyDone = pipeline.some((t) => t.name === 'survey' && t.status === 'completed');
+  const showContentGap = surveyDone && (status === 'running' || status === 'paused' || status === 'completed');
+  const showIdeation = ideationDone && (status === 'running' || status === 'paused' || status === 'completed');
+
   if (status === 'running' || status === 'queued') {
     const innerStage = run.paused_stage || '';
     const innerLabel = innerStage ? `while ${friendlyInnerStage(innerStage) ?? humanize(innerStage)}` : '';
@@ -213,6 +220,8 @@ export function LivePanel({ run }: LivePanelProps) {
     const narrative = agentNarrativeLine(activeOuter || 'survey', taskMap, run);
     return (
       <div className="live-activity-area">
+        {showContentGap && <ContentGapBanner runId={run.run_id} surveyDone={surveyDone} />}
+        {showIdeation && <IdeationPanel runId={run.run_id} ideationDone={ideationDone} />}
         <div className="live-thinking-view">
           <div className="thinking-dots" aria-label="Working">
             <span className="thinking-dot" />

@@ -30,6 +30,51 @@ export interface Paper {
   citation_count?: number;
   url?: string;
   relevance_score?: number;
+  content_tier?: 'full_text' | 'abstract' | 'metadata' | 'missing';
+  local_pdf_path?: string | null;
+  full_text?: string | null;
+  user_notes?: string;
+  source?: string;
+  zotero_item_key?: string | null;
+}
+
+// ── Version History ──────────────────────────────────────────────────────────
+
+export interface VersionEntry {
+  version_number: number;
+  trigger: string;
+  timestamp: string;
+  completed_stages: string[];
+  changes: string[];
+}
+
+// ── Content Gap ──────────────────────────────────────────────────────────────
+
+export interface ContentGapReport {
+  full_text: number;
+  abstract_only: number;
+  metadata_only: number;
+  missing: number;
+  has_gaps: boolean;
+  degraded_papers: Array<{ paper_id: string; title: string; content_tier: string; arxiv_id?: string }>;
+}
+
+// ── Ideation Pool ────────────────────────────────────────────────────────────
+
+export interface InjectedIdea {
+  text: string;
+  source: string;
+  injected_at: string;
+  incorporated: boolean;
+}
+
+export interface IdeationPoolState {
+  directions: ResearchDirection[];
+  selected_direction: ResearchDirection | null;
+  injected_ideas: InjectedIdea[];
+  emerged_insights: string[];
+  has_new_input: boolean;
+  version: number;
 }
 
 // ── Theory types ──────────────────────────────────────────────────────────────
@@ -146,7 +191,7 @@ export interface Artifacts {
 // ── InputSpec ─────────────────────────────────────────────────────────────────
 
 export interface InputSpec {
-  mode?: 'detailed' | 'reference' | 'exploration';
+  mode?: 'detailed' | 'reference' | 'exploration' | 'from_bib' | 'from_draft' | 'from_zotero';
   domain?: string;
   query?: string;
   conjecture?: string | null;
@@ -154,6 +199,14 @@ export interface InputSpec {
   paper_texts?: string[];
   additional_context?: string;
   selected_skills?: string[];
+  // from_bib
+  bib_content?: string;
+  pdf_dir?: string;
+  // from_draft
+  draft_content?: string;
+  draft_instruction?: string;
+  // from_zotero
+  zotero_collection_id?: string;
 }
 
 // ── RunResult ─────────────────────────────────────────────────────────────────

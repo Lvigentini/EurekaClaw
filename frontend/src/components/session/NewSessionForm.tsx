@@ -17,6 +17,9 @@ const MODES = [
     requirePrompt: true,
     requireDomain: false,
     showPaperIds: false,
+    showBib: false,
+    showDraft: false,
+    showZotero: false,
   },
   {
     key: 'reference',
@@ -28,6 +31,9 @@ const MODES = [
     requirePrompt: false,
     requireDomain: true,
     showPaperIds: true,
+    showBib: false,
+    showDraft: false,
+    showZotero: false,
   },
   {
     key: 'exploration',
@@ -39,6 +45,51 @@ const MODES = [
     requirePrompt: false,
     requireDomain: true,
     showPaperIds: false,
+    showBib: false,
+    showDraft: false,
+    showZotero: false,
+  },
+  {
+    key: 'from_bib',
+    icon: '📑',
+    label: 'From .bib',
+    desc: 'Start from your bibliography + local PDFs',
+    promptLabel: 'Research focus (optional)',
+    promptPlaceholder: 'e.g. Strengthen the regret analysis section',
+    requirePrompt: false,
+    requireDomain: true,
+    showPaperIds: false,
+    showBib: true,
+    showDraft: false,
+    showZotero: false,
+  },
+  {
+    key: 'from_draft',
+    icon: '✏️',
+    label: 'From Draft',
+    desc: 'Start from a draft paper with instructions',
+    promptLabel: 'Instruction for EurekaClaw',
+    promptPlaceholder: 'e.g. Help me strengthen the theory section',
+    requirePrompt: false,
+    requireDomain: false,
+    showPaperIds: false,
+    showBib: false,
+    showDraft: true,
+    showZotero: false,
+  },
+  {
+    key: 'from_zotero',
+    icon: '📕',
+    label: 'From Zotero',
+    desc: 'Import papers from your Zotero library',
+    promptLabel: 'Research focus (optional)',
+    promptPlaceholder: 'e.g. Find what I\'m missing in this collection',
+    requirePrompt: false,
+    requireDomain: true,
+    showPaperIds: false,
+    showBib: false,
+    showDraft: false,
+    showZotero: true,
   },
 ] as const;
 
@@ -58,6 +109,10 @@ export function NewSessionForm() {
   const [domain, setDomain] = useState(() => lastSpec?.domain || 'Machine learning theory');
   const [prompt, setPrompt] = useState(() => lastSpec?.conjecture || lastSpec?.query || '');
   const [paperIds, setPaperIds] = useState(() => (lastSpec?.paper_ids ?? []).join('\n'));
+  const [bibContent, setBibContent] = useState('');
+  const [pdfDir, setPdfDir] = useState('');
+  const [draftContent, setDraftContent] = useState('');
+  const [zoteroCollectionId, setZoteroCollectionId] = useState('');
   const [error, setError] = useState('');
   const [launching, setLaunching] = useState(false);
 
@@ -88,6 +143,15 @@ export function NewSessionForm() {
     }
     if (mode === 'exploration') {
       return { mode: 'exploration', domain: domain.trim(), query: prompt.trim() || `Survey the frontier of ${domain} and identify open problems`, additional_context: skillCtx, selected_skills: selectedSkills };
+    }
+    if (mode === 'from_bib') {
+      return { mode: 'from_bib', domain: domain.trim(), query: prompt.trim(), bib_content: bibContent, pdf_dir: pdfDir.trim() || undefined, additional_context: skillCtx, selected_skills: selectedSkills };
+    }
+    if (mode === 'from_draft') {
+      return { mode: 'from_draft', domain: domain.trim(), query: prompt.trim(), draft_content: draftContent, draft_instruction: prompt.trim(), additional_context: skillCtx, selected_skills: selectedSkills };
+    }
+    if (mode === 'from_zotero') {
+      return { mode: 'from_zotero', domain: domain.trim(), query: prompt.trim(), zotero_collection_id: zoteroCollectionId.trim(), additional_context: skillCtx, selected_skills: selectedSkills };
     }
     return { mode: 'detailed', domain: domain.trim(), conjecture: prompt.trim(), query: prompt.trim(), additional_context: skillCtx, selected_skills: selectedSkills };
   };
@@ -151,6 +215,31 @@ export function NewSessionForm() {
             <label className="canvas-full" id="paper-ids-label">
               <span className="canvas-label">arXiv / Semantic Scholar IDs <em className="field-note">(one per line)</em></span>
               <textarea id="input-paper-ids" rows={2} value={paperIds} onChange={(e) => setPaperIds(e.target.value)} placeholder={'1706.03762\n2005.14165'} />
+            </label>
+          )}
+          {cfg.showBib && (
+            <>
+              <label className="canvas-full">
+                <span className="canvas-label">BibTeX content <em className="field-note">(paste your .bib file)</em></span>
+                <textarea rows={6} value={bibContent} onChange={(e) => setBibContent(e.target.value)} placeholder={'@article{smith2024,\n  title = {Optimal Bounds},\n  author = {Smith, J.},\n  year = {2024},\n}'} />
+              </label>
+              <label className="canvas-full">
+                <span className="canvas-label">Local PDF directory <em className="field-note">(optional)</em></span>
+                <input type="text" value={pdfDir} onChange={(e) => setPdfDir(e.target.value)} placeholder="/path/to/papers/" />
+              </label>
+            </>
+          )}
+          {cfg.showDraft && (
+            <label className="canvas-full">
+              <span className="canvas-label">Draft paper content <em className="field-note">(paste LaTeX, Markdown, or plain text)</em></span>
+              <textarea rows={10} value={draftContent} onChange={(e) => setDraftContent(e.target.value)} placeholder={'\\documentclass{article}\n\\title{My Research Paper}\n...'} />
+            </label>
+          )}
+          {cfg.showZotero && (
+            <label className="canvas-full">
+              <span className="canvas-label">Zotero collection ID</span>
+              <input type="text" value={zoteroCollectionId} onChange={(e) => setZoteroCollectionId(e.target.value)} placeholder="e.g. ABC123 (from Zotero URL)" />
+              <em className="field-note">Requires ZOTERO_API_KEY and ZOTERO_LIBRARY_ID in settings</em>
             </label>
           )}
           <label className="canvas-full">
