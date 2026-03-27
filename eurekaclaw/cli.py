@@ -164,6 +164,15 @@ def from_bib(bib_file: str, pdfs: str | None, domain: str, query: str, mode: str
                 except Exception as e:
                     console.print(f"[yellow]PDF extraction failed for '{paper.title[:50]}': {e}[/yellow]")
 
+    full_text = sum(1 for p in papers if p.content_tier == "full_text")
+    console.print(Panel(
+        f"[bold]{len(papers)}[/bold] papers loaded from .bib file\n"
+        f"[bold]{full_text}[/bold] with full text (PDF matched)\n"
+        f"Domain: [cyan]{domain}[/cyan]",
+        title="[green]Bibliography Import[/green]",
+        border_style="green",
+    ))
+
     if not query:
         n = len(papers)
         query = (
@@ -451,6 +460,21 @@ def history(session_id: str) -> None:
         sys.exit(1)
 
     store = VersionStore(session_id, session_dir)
+
+    # Show session context
+    from eurekaclaw.storage.db import SessionDB
+    db = SessionDB(settings.eurekaclaw_dir / "eurekaclaw.db")
+    session = db.get_session(session_id)
+    if session:
+        console.print(Panel(
+            f"[bold]{session.domain}[/bold]\n"
+            f"[dim]{session.query[:100]}{'...' if len(session.query) > 100 else ''}[/dim]\n"
+            f"Status: [{'green' if session.status == 'completed' else 'blue'}]{session.status}[/]  |  "
+            f"Mode: {session.mode}",
+            title=f"[cyan]Session {session_id[:12]}[/cyan]",
+            border_style="dim",
+        ))
+
     versions = store.log()
     if not versions:
         console.print("[yellow]No versions found for this session.[/yellow]")
@@ -625,6 +649,16 @@ def checkout(session_id: str, version_number: int) -> None:
     head = store.head
     console.print(f"\n[green]Restored to v{version_number:03d}. New HEAD is v{head.version_number:03d}.[/green]")
     console.print(f"  Completed stages: {', '.join(target.completed_stages) or '(none)'}")
+
+    next_stages = []
+    from eurekaclaw.orchestrator.session_checkpoint import STAGE_ORDER
+    for stage in STAGE_ORDER:
+        if stage not in target.completed_stages:
+            next_stages.append(stage)
+            break
+    if next_stages:
+        console.print(f"  Next stage: [yellow]{next_stages[0]}[/yellow]")
+
     console.print(f"  Resume with: [bold]eurekaclaw resume {session_id}[/bold]")
 
 
@@ -710,6 +744,8 @@ def inject_paper(session_id: str, paper_ref: str) -> None:
 
     # Commit version
     bus.persist_incremental(completed_stage=None)
+    if bus.version_store and bus.version_store.head:
+        console.print(f"  Version: [cyan]v{bus.version_store.head.version_number:03d}[/cyan]")
 
     console.print(f"[green]Paper injected into session {session_id[:8]}.[/green]")
     console.print(f"  Bibliography now has {len(bib.papers)} papers.")
@@ -739,6 +775,8 @@ def inject_idea(session_id: str, text: str) -> None:
     bus.put_ideation_pool(pool)
 
     bus.persist_incremental(completed_stage=None)
+    if bus.version_store and bus.version_store.head:
+        console.print(f"  Version: [cyan]v{bus.version_store.head.version_number:03d}[/cyan]")
 
     console.print(f"[green]Idea injected into session {session_id[:8]}.[/green]")
     console.print(f"  \"{text[:80]}\"")
@@ -794,6 +832,8 @@ def inject_draft(session_id: str, draft_file: str, instruction: str) -> None:
     bus.put_ideation_pool(pool)
 
     bus.persist_incremental(completed_stage=None)
+    if bus.version_store and bus.version_store.head:
+        console.print(f"  Version: [cyan]v{bus.version_store.head.version_number:03d}[/cyan]")
 
     console.print(f"[green]Draft injected into session {session_id[:8]}.[/green]")
     console.print(f"  Claims: {len(analysis.claims)}, Citations: {len(analysis.citation_keys)}")
