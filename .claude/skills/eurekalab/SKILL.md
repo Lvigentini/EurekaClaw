@@ -9,12 +9,19 @@ user-invocable: true
 ## What This Is
 EurekaLab is a multi-agent AI research system that goes from a question to a publishable result. It crawls literature, generates hypotheses, proves theorems, runs experiments, and writes LaTeX papers.
 
-## Pipeline (7 stages)
+## Pipelines (5 paper types)
+
+The pipeline varies by `--paper-type` (default depends on command):
+
 ```
-survey → ideation → direction_gate → theory → theory_review_gate → experiment → writer
+proof:        survey → ideation → direction_gate → theory → theory_review → experiment → writer
+survey:       survey → ideation → analyst → writer
+review:       survey → ideation → analyst → writer (PRISMA methodology)
+experimental: survey → ideation → analyst → experiment → writer
+discussion:   survey → ideation → analyst → writer (argumentative structure)
 ```
 
-The pipeline is **non-linear** — stages can be re-entered via the `inject` commands, and every state change is versioned (git-like history with checkout/diff/rollback).
+Pipelines are **non-linear** — stages can be re-entered via `inject` commands, and every state change is versioned (git-like history with checkout/diff/rollback).
 
 ## Core Architecture
 
@@ -58,14 +65,15 @@ Continuous ideation — not a one-shot stage. Collects:
 
 ## CLI Commands (20+)
 
-### Research Entry Points
+### Research Entry Points (all accept --paper-type/-t)
 ```bash
-eurekalab prove "conjecture" --domain "ML theory"
-eurekalab explore "domain topic"
-eurekalab from-papers 2401.12345 --domain "ML theory"
-eurekalab from-bib refs.bib --pdfs ./papers/ --domain "ML theory"
-eurekalab from-draft paper.tex "Strengthen the theory" --domain "ML theory"
-eurekalab from-zotero COLLECTION_ID --domain "ML theory"
+eurekalab prove "conjecture" --domain "ML theory"                    # default: proof
+eurekalab explore "domain topic" --paper-type survey                 # default: survey
+eurekalab from-papers 2401.12345 --domain "ML theory"                # default: survey
+eurekalab from-bib refs.bib --pdfs ./papers/ --domain "ML theory"    # default: survey
+eurekalab from-draft paper.tex "Strengthen the theory"               # default: proof
+eurekalab from-zotero COLLECTION_ID --domain "ML theory"             # default: survey
+# Paper types: proof, survey, review, experimental, discussion
 ```
 
 ### Mid-Session Injection (pause first with Ctrl+C)
@@ -83,6 +91,14 @@ eurekalab checkout SESSION_ID 2
 eurekalab resume SESSION_ID
 ```
 
+### Session Management
+```bash
+eurekalab sessions                                    # list all sessions
+eurekalab clean --older-than 30 --status failed       # prune old sessions
+eurekalab housekeep --push-papers                     # global Zotero push
+eurekalab pause SESSION_ID                            # pause a running session
+```
+
 ### Zotero Integration
 ```bash
 # Requires: ZOTERO_API_KEY + ZOTERO_LIBRARY_ID env vars
@@ -90,10 +106,19 @@ eurekalab from-zotero COLLECTION_ID --domain "ML theory"
 eurekalab push-to-zotero SESSION_ID --collection "Results"
 ```
 
+### Library Authentication
+```bash
+eurekalab library-auth                                # enable institutional access
+eurekalab library-set-proxy URL                       # set proxy URL
+eurekalab library-import-cookies                      # import from browser
+eurekalab library-status                              # check auth status
+eurekalab library-test DOI                            # test PDF download
+```
+
 ## Key Directories
 ```
 eurekalab/
-  agents/           # BaseAgent subclasses (survey, ideation, theory, experiment, writer)
+  agents/           # BaseAgent subclasses (survey, ideation, theory, experiment, analyst, writer)
   analyzers/        # BibLoader, DraftAnalyzer, ContentGapAnalyzer
   integrations/     # Zotero adapter (pyzotero)
   knowledge_bus/    # Central artifact bus
