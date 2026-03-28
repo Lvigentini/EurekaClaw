@@ -91,21 +91,21 @@ img {
   top: 0;
   z-index: 100;
 }
-.header-left { display: flex; align-items: center; gap: 10px; }
+.header-left { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .header-brand { display: flex; align-items: center; gap: 8px; }
-.header-logo { width: 28px; height: 28px; border-radius: 7px; }
-.header-title { font-size: 15px; font-weight: 700; letter-spacing: -0.02em; color: var(--text); }
-.header-tray-toggle { background: none; border: none; cursor: pointer; color: var(--muted); padding: 6px; border-radius: 8px; transition: all 0.15s; display: grid; place-items: center; }
+.header-logo { width: 26px; height: 26px; border-radius: 6px; }
+.header-title { font-size: 14px; font-weight: 700; letter-spacing: -0.02em; color: var(--text); }
+.header-tray-toggle { background: none; border: none; cursor: pointer; color: var(--muted); width: 32px; height: 32px; border-radius: 8px; transition: all 0.15s; display: grid; place-items: center; }
 .header-tray-toggle:hover { background: rgba(0,0,0,0.05); color: var(--text); }
-.header-tray-toggle.is-open { color: var(--primary); }
+.header-tray-toggle.is-open { color: var(--primary); background: var(--primary-soft); }
 
-.header-tabs { display: flex; gap: 2px; margin-left: 24px; flex: 1; }
-.header-tab { padding: 6px 14px; border: none; background: none; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--muted); cursor: pointer; transition: all 0.15s; letter-spacing: -0.01em; }
+.header-tabs { display: flex; gap: 2px; justify-content: center; flex: 1; }
+.header-tab { padding: 6px 16px; border: none; background: none; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--muted); cursor: pointer; transition: all 0.15s; letter-spacing: -0.01em; }
 .header-tab:hover { background: rgba(0,0,0,0.04); color: var(--text); }
 .header-tab.is-active { background: var(--primary-soft); color: var(--primary-strong); font-weight: 600; }
 
-.header-right { display: flex; align-items: center; gap: 4px; }
-.header-icon-btn { background: none; border: none; cursor: pointer; color: var(--muted); padding: 6px; border-radius: 8px; transition: all 0.15s; display: grid; place-items: center; }
+.header-right { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.header-icon-btn { background: none; border: none; cursor: pointer; color: var(--muted); width: 32px; height: 32px; border-radius: 8px; transition: all 0.15s; display: grid; place-items: center; }
 .header-icon-btn:hover { background: rgba(0,0,0,0.05); color: var(--text); }
 .header-icon-btn.is-active { color: var(--primary); background: var(--primary-soft); }
 
@@ -1026,11 +1026,12 @@ img {
 
 .main-shell {
   position: relative;
-  padding: 20px 24px;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
   overflow-x: hidden;
+  overflow-y: auto;
+  height: calc(100vh - var(--header-height, 50px));
 }
 
 /* Workspace view fills the main shell when visible */
@@ -1110,8 +1111,11 @@ img {
 }
 
 .view.is-visible {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
   animation: fade-in 220ms ease;
+  overflow: hidden;
 }
 
 .workspace-grid,
@@ -3702,7 +3706,7 @@ textarea {
 
 .new-session-card {
   width: 100%;
-  max-width: 660px;
+  max-width: 800px;
   display: flex;
   flex-direction: column;
   gap: 28px;
