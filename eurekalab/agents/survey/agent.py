@@ -57,7 +57,7 @@ class SurveyAgent(BaseAgent):
     role = AgentRole.SURVEY
 
     def get_tool_names(self) -> list[str]:
-        tools = ["arxiv_search", "semantic_scholar_search", "crossref_search", "unpaywall_lookup", "web_search", "citation_manager"]
+        tools = ["arxiv_search", "semantic_scholar_search", "crossref_search", "unpaywall_lookup", "openalex_search", "web_search", "citation_manager"]
         from eurekalab.config import settings
         if settings.gemini_api_key:
             tools.append("gemini_search")
