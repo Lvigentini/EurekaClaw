@@ -89,6 +89,10 @@ class Config(BaseSettings):
 
     # ---- Library / PDF download --------------------------------------------
     library_contact_email: str = Field(default="", alias="LIBRARY_CONTACT_EMAIL")
+    library_proxy_url: str = Field(default="", alias="LIBRARY_PROXY_URL")
+    library_proxy_mode: Literal["prefix", "suffix", "vpn", "none"] = Field(
+        default="none", alias="LIBRARY_PROXY_MODE"
+    )
     pdf_cache_dir: str = Field(default="", alias="PDF_CACHE_DIR")
     pdf_download_timeout: int = Field(default=60, alias="PDF_DOWNLOAD_TIMEOUT")
     pdf_auto_download: bool = Field(default=True, alias="PDF_AUTO_DOWNLOAD")

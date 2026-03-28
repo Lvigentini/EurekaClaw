@@ -28,9 +28,8 @@ class PdfDownloader:
         3. arXiv          (if paper.arxiv_id)
         4. Unpaywall      (if paper.doi — free OA copies)
         5. CrossRef links (if paper.doi — publisher full-text URLs)
-        6. Direct URL     (paper.url as last resort)
-
-    University proxy (Phase 2) will be inserted between steps 5 and 6.
+        6. University proxy (if configured — routes through library auth)
+        7. Direct URL     (paper.url as last resort)
     """
 
     def __init__(self) -> None:
@@ -84,7 +83,13 @@ class PdfDownloader:
             if text:
                 return self._apply(paper, text, cache_key=self._cache_key(paper))
 
-        # 6. Direct URL
+        # 6. University proxy (if configured)
+        if paper.doi:
+            text = await self._try_proxy_download(paper)
+            if text:
+                return self._apply(paper, text, cache_key=self._cache_key(paper))
+
+        # 7. Direct URL
         if paper.url and paper.url.lower().endswith(".pdf"):
             text = await self._download_and_extract_url(paper.url, paper)
             if text:
@@ -166,6 +171,61 @@ class PdfDownloader:
                         return text
         except Exception as e:
             logger.debug("PdfDownloader: CrossRef links failed for %s: %s", paper.doi, e)
+
+        return None
+
+    async def _try_proxy_download(self, paper: "Paper") -> str | None:
+        """Attempt to download via university library proxy."""
+        if not settings.library_proxy_url or settings.library_proxy_mode == "none":
+            return None
+        if not paper.doi:
+            return None
+
+        try:
+            from eurekalab.integrations.library.proxy import (
+                AuthenticatedSession, ProxyRewriter,
+            )
+            from eurekalab.integrations.library.publishers import resolve_pdf_url
+
+            proxy = ProxyRewriter(
+                proxy_url=settings.library_proxy_url,
+                mode=settings.library_proxy_mode,
+            )
+
+            # Try loading saved session cookies
+            session = AuthenticatedSession.from_session_file(proxy)
+            if session is None:
+                session = AuthenticatedSession(proxy=proxy)
+
+            # Resolve DOI to landing page, then to PDF URL
+            doi_url = f"https://doi.org/{paper.doi}"
+
+            # First try publisher-specific PDF patterns
+            async with httpx.AsyncClient(follow_redirects=True, timeout=self._timeout) as client:
+                r = await client.head(doi_url)
+                landing_url = str(r.url)
+
+            pdf_url = resolve_pdf_url(landing_url, paper.doi)
+            if pdf_url:
+                proxied_url = proxy.rewrite(pdf_url)
+                logger.info("PdfDownloader: proxy download %s → %s", paper.doi, proxied_url)
+                r = await session.get(pdf_url, timeout=self._timeout)
+                if r.status_code == 200 and len(r.content) > 1000:
+                    text = self._extract_bytes(r.content, label=paper.paper_id)
+                    if text:
+                        return text
+
+            # Fallback: try proxied DOI URL directly
+            r = await session.get(doi_url, timeout=self._timeout)
+            if r.status_code == 200 and len(r.content) > 1000:
+                content_type = r.headers.get("content-type", "")
+                if "pdf" in content_type:
+                    text = self._extract_bytes(r.content, label=paper.paper_id)
+                    if text:
+                        return text
+
+        except Exception as e:
+            logger.debug("PdfDownloader: proxy download failed for %s: %s", paper.doi, e)
 
         return None
 

@@ -1684,5 +1684,169 @@ def _run_session(
     console.print(f"[green]Artifacts saved to {out}[/green]")
 
 
+# ---------------------------------------------------------------------------
+# library-auth — university library proxy configuration
+# ---------------------------------------------------------------------------
+
+@main.group("library-auth")
+def library_auth() -> None:
+    """Configure university library proxy for paywalled PDF access."""
+    pass
+
+
+@library_auth.command("set-proxy")
+@click.argument("proxy_url")
+@click.option("--mode", "-m", default="prefix",
+              type=click.Choice(["prefix", "suffix", "vpn"]),
+              help="Proxy rewriting mode (default: prefix)")
+def library_set_proxy(proxy_url: str, mode: str) -> None:
+    """Set the university library proxy URL.
+
+    Example: eurekalab library-auth set-proxy "https://ezproxy.library.edu/login?url="
+    """
+    from eurekalab.integrations.library.proxy import AuthenticatedSession, SESSION_FILE
+
+    # Load existing session or create new
+    existing: dict[str, Any] = {}
+    if SESSION_FILE.exists():
+        try:
+            existing = json.loads(SESSION_FILE.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    AuthenticatedSession.save_session(
+        proxy_url=proxy_url,
+        proxy_mode=mode,
+        cookies=existing.get("cookies", {}),
+    )
+    console.print(f"[green]Proxy set:[/green] {proxy_url} (mode={mode})")
+
+
+@library_auth.command("set-cookie")
+@click.argument("cookie_string")
+def library_set_cookie(cookie_string: str) -> None:
+    """Import session cookies from a browser Cookie header value.
+
+    Copy the Cookie header from browser DevTools on a proxied page.
+
+    Example: eurekalab library-auth set-cookie "ezproxy=ABC123; EZproxySID=xyz"
+    """
+    from eurekalab.integrations.library.proxy import (
+        AuthenticatedSession, parse_cookie_string, SESSION_FILE,
+    )
+
+    cookies = parse_cookie_string(cookie_string)
+    if not cookies:
+        console.print("[red]No valid cookies found in the string.[/red]")
+        sys.exit(1)
+
+    # Load existing session to preserve proxy settings
+    existing: dict[str, Any] = {}
+    if SESSION_FILE.exists():
+        try:
+            existing = json.loads(SESSION_FILE.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    AuthenticatedSession.save_session(
+        proxy_url=existing.get("proxy_url", settings.library_proxy_url),
+        proxy_mode=existing.get("proxy_mode", settings.library_proxy_mode),
+        cookies=cookies,
+    )
+    console.print(f"[green]Saved {len(cookies)} cookie(s):[/green] {', '.join(cookies.keys())}")
+
+
+@library_auth.command("import-cookies")
+@click.argument("cookie_file", type=click.Path(exists=True))
+def library_import_cookies(cookie_file: str) -> None:
+    """Import cookies from a Netscape-format cookies.txt file.
+
+    Many browser extensions can export cookies in this format.
+    """
+    from eurekalab.integrations.library.proxy import (
+        AuthenticatedSession, parse_netscape_cookie_file, SESSION_FILE,
+    )
+
+    cookies = parse_netscape_cookie_file(Path(cookie_file))
+    if not cookies:
+        console.print("[red]No cookies parsed from the file.[/red]")
+        sys.exit(1)
+
+    existing: dict[str, Any] = {}
+    if SESSION_FILE.exists():
+        try:
+            existing = json.loads(SESSION_FILE.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    AuthenticatedSession.save_session(
+        proxy_url=existing.get("proxy_url", settings.library_proxy_url),
+        proxy_mode=existing.get("proxy_mode", settings.library_proxy_mode),
+        cookies=cookies,
+    )
+    console.print(f"[green]Imported {len(cookies)} cookie(s) from {cookie_file}[/green]")
+
+
+@library_auth.command("test")
+@click.argument("doi")
+def library_test(doi: str) -> None:
+    """Test library access by attempting to download a paper by DOI.
+
+    Example: eurekalab library-auth test "10.1109/TIT.2023.1234567"
+    """
+    from eurekalab.integrations.library.proxy import (
+        AuthenticatedSession, ProxyRewriter,
+    )
+    from eurekalab.integrations.library.publishers import resolve_pdf_url
+
+    status = AuthenticatedSession.get_session_status()
+    if not status["configured"]:
+        console.print("[yellow]No library session configured. Run set-proxy and set-cookie first.[/yellow]")
+        console.print("[dim]Attempting without proxy (Unpaywall/CrossRef only)...[/dim]")
+
+    # Try the full PdfDownloader cascade
+    from eurekalab.services.pdf_downloader import PdfDownloader
+    from eurekalab.types.artifacts import Paper
+
+    paper = Paper(paper_id=doi, title="Test", authors=[], doi=doi)
+    downloader = PdfDownloader()
+
+    result = asyncio.run(downloader.download_and_extract(paper))
+    if result:
+        console.print(f"[green]Success![/green] Downloaded and extracted {len(result)} characters.")
+        console.print(f"  Content tier: {paper.content_tier}")
+        console.print(f"  First 200 chars: {result[:200]}...")
+    else:
+        console.print("[red]Failed to download PDF for this DOI.[/red]")
+        console.print("[dim]Check your proxy settings or try a different DOI.[/dim]")
+
+
+@library_auth.command("status")
+def library_status() -> None:
+    """Show current library authentication status."""
+    from eurekalab.integrations.library.proxy import AuthenticatedSession
+
+    status = AuthenticatedSession.get_session_status()
+
+    if not status["configured"]:
+        console.print(Panel(
+            "[yellow]Not configured[/yellow]\n\n"
+            "Set up with:\n"
+            '  eurekalab library-auth set-proxy "https://ezproxy.library.edu/login?url="\n'
+            '  eurekalab library-auth set-cookie "cookie_name=value"',
+            title="[bold]Library Authentication[/bold]",
+        ))
+        return
+
+    console.print(Panel(
+        f"[green]Configured[/green]\n\n"
+        f"  Proxy URL:    {status['proxy_url']}\n"
+        f"  Proxy mode:   {status['proxy_mode']}\n"
+        f"  Cookies:      {status['cookie_count']} stored\n"
+        f"  Last updated: {status['updated_at']}",
+        title="[bold]Library Authentication[/bold]",
+    ))
+
+
 if __name__ == "__main__":
     main()
