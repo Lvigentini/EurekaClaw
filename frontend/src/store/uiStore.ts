@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-type ActiveView = 'workspace' | 'skills' | 'systems' | 'onboarding';
+type ActiveView = 'workspace' | 'skills' | 'systems' | 'onboarding' | 'docs';
 type ActiveWsTab = 'live' | 'proof' | 'paper' | 'logs' | 'history';
 
 const STORAGE_KEY = 'eurekalab_ui';
@@ -10,7 +10,7 @@ function loadPersistedUi(): { activeView: ActiveView; activeWsTab: ActiveWsTab }
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      const validViews: ActiveView[] = ['workspace', 'skills', 'systems', 'onboarding'];
+      const validViews: ActiveView[] = ['workspace', 'skills', 'systems', 'onboarding', 'docs'];
       const validTabs: ActiveWsTab[] = ['live', 'proof', 'paper', 'logs', 'history'];
       return {
         activeView: validViews.includes(parsed.activeView) ? parsed.activeView : 'onboarding',

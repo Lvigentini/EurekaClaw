@@ -1154,6 +1154,30 @@ class UIRequestHandler(SimpleHTTPRequestHandler):
             authed, msg = check_ccproxy_auth("claude_api")
             self._send_json({"installed": True, "authenticated": authed, "message": msg})
             return
+        # User docs: /api/docs and /api/docs/<slug>
+        if parsed.path == "/api/docs":
+            _docs_dir = Path(__file__).parent / "user_docs"
+            _index_path = _docs_dir / "_index.json"
+            if _index_path.exists():
+                self._send_json({"docs": json.loads(_index_path.read_text())})
+            else:
+                self._send_json({"docs": []})
+            return
+        if parsed.path.startswith("/api/docs/"):
+            slug = parsed.path.removeprefix("/api/docs/").strip("/")
+            _docs_dir = Path(__file__).parent / "user_docs"
+            _index_path = _docs_dir / "_index.json"
+            if _index_path.exists():
+                index = json.loads(_index_path.read_text())
+                entry = next((d for d in index if d["slug"] == slug), None)
+                if entry:
+                    doc_path = _docs_dir / entry["file"]
+                    if doc_path.exists():
+                        self._send_json({"slug": slug, "title": entry["title"], "content": doc_path.read_text()})
+                        return
+            self._send_json({"error": "Doc not found"}, status=HTTPStatus.NOT_FOUND)
+            return
+
         if parsed.path == "/api/health":
             self._send_json({"ok": True, "time": datetime.utcnow().isoformat()})
             return

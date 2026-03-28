@@ -10,6 +10,7 @@ import { SessionDetailPane } from '@/components/session/SessionDetailPane';
 import { SkillsView } from '@/components/skills/SkillsView';
 import { ConfigView } from '@/components/config/ConfigView';
 import { OnboardingView } from '@/components/onboarding/OnboardingView';
+import { DocsView } from '@/components/docs/DocsView';
 import { AgentDrawer } from '@/components/agent/AgentDrawer';
 import { useSessionStore } from '@/store/sessionStore';
 import type { Skill } from '@/types';
@@ -94,6 +95,13 @@ export function App() {
           data-view="systems"
         >
           {activeView === 'systems' && <ConfigView />}
+        </section>
+
+        <section
+          className={`view${activeView === 'docs' ? ' is-visible' : ''}`}
+          data-view="docs"
+        >
+          {activeView === 'docs' && <DocsView />}
         </section>
         <button
           className="tutorial-btn"

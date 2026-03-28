@@ -50,14 +50,13 @@ export function Sidebar() {
       >
         Settings
       </button>
-      <a
-        className="nav-item nav-item--docs"
-        href="https://github.com/Lvigentini/EurekaLab/tree/main/docs"
-        target="_blank"
-        rel="noopener noreferrer"
+      <button
+        className={`nav-item nav-item--docs${activeView === 'docs' ? ' is-active' : ''}`}
+        data-view-target="docs"
+        onClick={() => setActiveView('docs')}
       >
-        Docs ↗
-      </a>
+        Docs
+      </button>
     </aside>
   );
 }
