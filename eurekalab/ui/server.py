@@ -1178,6 +1178,13 @@ class UIRequestHandler(SimpleHTTPRequestHandler):
             self._send_json({"error": "Doc not found"}, status=HTTPStatus.NOT_FOUND)
             return
 
+        if parsed.path == "/api/reviewers":
+            from eurekalab.agents.reviewer.registry import ReviewerRegistry
+            registry = ReviewerRegistry(user_dir=settings.eurekalab_dir / "reviewers")
+            personas = [p.to_dict() for p in registry.list_all()]
+            self._send_json({"reviewers": personas})
+            return
+
         if parsed.path == "/api/health":
             self._send_json({"ok": True, "time": datetime.utcnow().isoformat()})
             return
@@ -1554,6 +1561,46 @@ class UIRequestHandler(SimpleHTTPRequestHandler):
                 self._send_json({"ok": True})
             else:
                 self._send_json({"error": "Gate not active for this session"}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        if "/review" in parsed.path and parsed.path.startswith("/api/runs/") and "ideation" not in parsed.path:
+            run_id = parsed.path.split("/")[3]
+            payload = self._read_json()
+            persona_name = payload.get("persona", "rigorous")
+            custom_instructions = payload.get("custom_instructions", "")
+            paper_text = payload.get("paper_text", "")
+
+            # If no paper_text provided, try to load from session artifacts
+            if not paper_text:
+                for fname in ("paper.md", "paper.tex"):
+                    fpath = settings.runs_dir / run_id / fname
+                    if fpath.exists():
+                        paper_text = fpath.read_text(encoding="utf-8")
+                        break
+
+            if not paper_text:
+                self._send_json({"error": "No paper text provided or found in session"}, status=HTTPStatus.BAD_REQUEST)
+                return
+
+            try:
+                from eurekalab.agents.reviewer.agent import ReviewerAgent
+                import asyncio
+                agent = ReviewerAgent()
+                loop = asyncio.new_event_loop()
+                try:
+                    result = loop.run_until_complete(agent.review(
+                        paper_text=paper_text,
+                        persona_name=persona_name,
+                        custom_instructions=custom_instructions,
+                        previous_comments=payload.get("previous_comments"),
+                    ))
+                finally:
+                    loop.close()
+                self._send_json({"review": result.to_dict()})
+            except ValueError as exc:
+                self._send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
             return
 
         self._send_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)

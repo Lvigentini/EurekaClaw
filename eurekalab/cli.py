@@ -1722,6 +1722,121 @@ def _run_session(
 
 
 # ---------------------------------------------------------------------------
+# reviewer — manage reviewer personas
+# ---------------------------------------------------------------------------
+
+@main.group()
+def reviewer() -> None:
+    """Manage reviewer personas."""
+    pass
+
+
+@reviewer.command("list")
+def reviewer_list() -> None:
+    """List all available reviewer personas."""
+    from rich.table import Table
+    from eurekalab.agents.reviewer.registry import ReviewerRegistry
+
+    registry = ReviewerRegistry(user_dir=settings.eurekalab_dir / "reviewers")
+    personas = registry.list_all()
+
+    if not personas:
+        console.print("[dim]No reviewer personas found.[/dim]")
+        return
+
+    table = Table(title=f"Reviewer Personas ({len(personas)})")
+    table.add_column("Name", style="cyan")
+    table.add_column("Type", style="dim", width=8)
+    table.add_column("Icon", width=4)
+    table.add_column("Description", max_width=50)
+
+    for p in personas:
+        table.add_row(p.name, p.type, p.icon, p.description[:48])
+
+    console.print(table)
+
+
+@reviewer.command("install")
+@click.argument("persona_file", type=click.Path(exists=True))
+def reviewer_install(persona_file: str) -> None:
+    """Install a reviewer persona from a YAML file.
+
+    Example: eurekalab reviewer install my-reviewer.yaml
+    """
+    from eurekalab.agents.reviewer.registry import ReviewerRegistry
+
+    registry = ReviewerRegistry(user_dir=settings.eurekalab_dir / "reviewers")
+    persona = registry.install(Path(persona_file), settings.eurekalab_dir / "reviewers")
+    console.print(f"[green]Installed reviewer persona: {persona.icon} {persona.name}[/green]")
+
+
+# ---------------------------------------------------------------------------
+# review — review a paper from the terminal
+# ---------------------------------------------------------------------------
+
+@main.command()
+@click.argument("file_path", type=click.Path(exists=True))
+@click.option("--persona", "-p", default="rigorous", help="Reviewer persona to use")
+@click.option("--instructions", "-i", default="", help="Custom reviewer instructions")
+def review(file_path: str, persona: str, instructions: str) -> None:
+    """Review a paper with an AI reviewer persona.
+
+    Example: eurekalab review paper.tex --persona adversarial
+    """
+    from eurekalab.agents.reviewer.agent import ReviewerAgent
+
+    text = Path(file_path).read_text(encoding="utf-8")
+    if not text.strip():
+        console.print("[red]File is empty.[/red]")
+        sys.exit(1)
+
+    agent = ReviewerAgent()
+    p = agent.get_persona(persona)
+    if not p:
+        console.print(f"[red]Persona '{persona}' not found.[/red]")
+        console.print(f"[dim]Available: {', '.join(pp.name for pp in agent.list_personas())}[/dim]")
+        sys.exit(1)
+
+    console.print(f"\n[blue]{p.icon} Reviewing with {p.name}...[/blue]\n")
+
+    result = asyncio.run(agent.review(
+        paper_text=text,
+        persona_name=persona,
+        custom_instructions=instructions,
+    ))
+
+    # Print results
+    if result.summary:
+        console.print(Panel(result.summary, title="Summary", border_style="cyan"))
+
+    if result.strengths:
+        console.print("\n[green]Strengths:[/green]")
+        for s in result.strengths:
+            console.print(f"  [green]+[/green] {s}")
+
+    for severity, color, label in [("major", "red", "MAJOR"), ("minor", "yellow", "MINOR"), ("suggestion", "dim", "SUGGESTION")]:
+        issues = [c for c in result.comments if c.severity == severity]
+        if issues:
+            console.print(f"\n[{color}]{label} ({len(issues)}):[/{color}]")
+            for c in issues:
+                section = f" [{c.section}]" if c.section else ""
+                console.print(f"  [{color}]{label}[/{color}]{section}: {c.comment}")
+                if c.suggestion:
+                    console.print(f"    [dim]→ {c.suggestion}[/dim]")
+
+    if result.scores:
+        console.print("\n[cyan]Scores:[/cyan]")
+        for dim, score in result.scores.items():
+            console.print(f"  {dim}: {score}")
+
+    if result.recommendation:
+        console.print(f"\n[bold]Recommendation: {result.recommendation}[/bold]")
+
+    total = len(result.comments)
+    console.print(f"\n[dim]{result.major_count} major, {result.minor_count} minor, {result.suggestion_count} suggestions ({total} total)[/dim]")
+
+
+# ---------------------------------------------------------------------------
 # library-auth — university library proxy configuration
 # ---------------------------------------------------------------------------
 
