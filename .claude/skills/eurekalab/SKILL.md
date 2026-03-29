@@ -106,6 +106,16 @@ eurekalab from-zotero COLLECTION_ID --domain "ML theory"
 eurekalab push-to-zotero SESSION_ID --collection "Results"
 ```
 
+### Review
+```bash
+eurekalab review paper.tex --persona adversarial      # review with adversarial persona
+eurekalab review paper.md --persona constructive -i "focus on methods"
+eurekalab reviewer list                               # list all reviewer personas
+eurekalab reviewer install neurips-2026.yaml          # install a persona from file
+# Built-in personas: adversarial, rigorous, constructive
+# User personas: ~/.eurekalab/reviewers/*.yaml
+```
+
 ### Library Authentication
 ```bash
 eurekalab library-auth                                # enable institutional access
